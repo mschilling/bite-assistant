@@ -8,6 +8,7 @@ script:
 - npm install
 - cd functions
 - npm install
+- cd ..
 after_success:
 - .travis/deploy.sh develop
 cache:

@@ -9,7 +9,7 @@ script:
 - cd functions
 - npm install
 after_success:
-- ./.travis/deploy.sh develop
+- .travis/deploy.sh develop
 cache:
   directories:
   - $(npm config get prefix)/bin/firebase-tools

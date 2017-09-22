@@ -1,0 +1,16 @@
+language: node_js
+node_js:
+- '6.9'
+dist: trusty
+before_script:
+script:
+- npm install
+after_success:
+cache:
+  directories:
+  - node_modules
+notifications:
+  email: false
+  slack:
+    secure: k1Ld9+dKW6AyfdfT50KS57uWo3t4y1QDGllw0x0JTbKd+Urq14yyjQkj7+PwXnVPNoFqegjHQGjn0bzQhKB98XIXQXcE1XALLRwIMxB0yAuwVMFn67LtiuwU92lOdBdFvQAGBSPxQENMHnIlqSCSAHnmOjSo38SvNb6A3EuQRHhDLAw8CM8EIypCsmBAheqUsivtOxmOPCYd5spyNz6QDwLDZ8Y2XQtJ6TuEQTGLqeCt0e5yvwU5gQC/4QR+I8t9hQ9wPAie8lhrqdyc85XKcsgSb+XukbxtNSElWBQjrFzVof26XO8gdgP5+ecnfZ6IxnAmu0ezZwcdr9Ck92AuhAMeonEkJGZuKPffXrvNPXRdjPYWXonC4xZe/hMnTo+Xg+Xc78hMBddb8dJEKs1T3hJTGOK3am/MU8X4Uz1/dFbA6s9dOyIG9D/B+9eeJMPx1bje47T0Pjo+syCTkq6SuSNsqGIoCWTskrT0wDn68reV5MNTkF22TtlLRoMSdCvRvowvUoISVO0m6qFlDfq1B52UMpJMZMKUe9nodtf1FkH/0uVLmkFJT4S/vbf2v4lTGzCPPlJdcSn/swMSCwGXRNsLLkVMMiHogK+UpdfwgAOpQC+/2kOzjikBm0tZm8K1poKBvI6qKg931vZ492rnN1dw3YMhs9f41wHlO1/jb5Q=
+  webhooks: https://coders.move4mobile.io/webhooks/travis

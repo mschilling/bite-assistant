@@ -15,7 +15,7 @@ const LOCATION_INTENT = 'input.start';
 const ORDER_INTENT = 'input.welcome';
 
 // Contexts
-const LOCATION_CONTEXT = 'order-location';
+const LOCATION_CONTEXT = 'orderlocation';
 const LOCATION_ARGUMENT = 'Location';
 
 //start of the firebase function
@@ -34,39 +34,52 @@ exports.Bite = functions.https.onRequest((request, response) => {
 
   //select the location to order from.
   function getLocation(assistant) {
-    let storeNumber = 0;
-    let store = "McDonalds";//fallback
-    let location = "Amsterdam";//fallback
 
-    //get the location context, this can be used during later steps.
-    let context = assistant.getContext(LOCATION_CONTEXT);
-    const locationContext = assistant.getArgument(LOCATION_ARGUMENT);
+    //check if user is logged in
+    const userName = assistant.data.username;
+    if (userName != null) {
 
-    let i = 0;
+      let storeNumber = 0;
+      let store = "McDonalds";//fallback
+      let location = "Amsterdam";//fallback
 
-    orderRef.once('value', ((data) => {
-      storeRef.once('value', ((userData) => {
-        data.forEach((childData) => {
-          if (locationContext == childData.val().location) {
-            storeNumber = childData.val().store;
-            location = childData.val().location;
-            i++;
+      //get the location context, this can be used during later steps.
+      let context = assistant.getContext(LOCATION_CONTEXT);
+      const locationContext = assistant.getArgument(LOCATION_ARGUMENT);
+
+      let i = 0;
+
+      orderRef.once('value', ((data) => {
+        storeRef.once('value', ((userData) => {
+          data.forEach((childData) => {
+            if (locationContext == childData.val().location) {
+              storeNumber = childData.val().store;
+              location = childData.val().location;
+              i++;
+            }
+          });
+          userData.forEach((childData) => {
+            if (storeNumber == childData.val().id) {
+              store = childData.val().name;
+            }
+          });
+          let orderStore = "";
+          if (store != "McDonalds") {
+            orderStore = `<break time="1"/>, do you want to order from ${store}?`;
+            assistant.data = { storeNumber: storeNumber }
           }
-        });
-        userData.forEach((childData) => {
-          if (storeNumber == childData.val().id) {
-            store = childData.val().name;
-          }
-        });
-        let orderStore = "";
-        if (store != "McDonalds") {
-          orderStore = `<break time="1"/>, do you want to order from ${store}?`;
-          assistant.data = { storeNumber: storeNumber }
-        }
-        const speech = `<speak> there are currently ${i} open bites in ${locationContext}` + orderStore + `</speak>`;
-        assistant.ask(speech);
+          const speech = `<speak> there are currently ${i} open bites in ${locationContext}` + orderStore + `</speak>`;
+          assistant.ask(speech);
+        }));
       }));
-    }));
+
+    } else {
+      //redirect back to the login process.
+      //set the context so the right action is performed when the user enters an email.
+      assistant.setContext("DefaultWelcomeIntent-followup", 2);
+      //shows the message
+      getUser(assistant);
+    }
     //TO DO
     //add card with link to the orderpage of the snackbar(for view on phone)
     //requires new field with url in the database of stores
@@ -79,9 +92,9 @@ exports.Bite = functions.https.onRequest((request, response) => {
     let check = 0; // 0 is negative match, 1 is positive.
     let userData; // stores the user data when the uid matches in the db
 
-    // get the uid from your assistant, this uid is bound to email and should be the same across all your devices.
+    //get the uid from your assistant, this uid is bound to the session on your google account and is the same across all your devices..
     //the uid is not permanent and can be reset by the user, but usually doesn't change.
-    const userId = assistant.getUser().userId; 
+    const userId = assistant.getUser().userId;
 
     //loop through all users
     userRef.once('value', ((data) => {
@@ -94,12 +107,13 @@ exports.Bite = functions.https.onRequest((request, response) => {
       })
 
       if (check == 0) {
-        const speech = `<speak> Welcome, it looks like your Bite Assistant is not yet linked to an account, <break time="1"/>`,
-        `please enter the email adress of your existing Bite account to start <break time="1"/>`,
-        `it is reccomended to do this on a phone and not on the Google Home. </speak>`;
+        const speech = `<speak> Welcome, it looks like your Bite Assistant is not yet linked to an account, <break time="1"/>` +
+          `please enter the email adress of your existing Bite account to start the sign-up process. <break time="1"/>` +
+          `It is reccomended to do this by screen input. </speak>`;
         assistant.ask(speech);
       } else {
-        const speech = `<speak> Welcome back ${userData.display_name}!  </speak>`;
+        const speech = `<speak> Welcome ${userData.display_name}!  </speak>`;
+        assistant.data = { username: userData.display_name };
         assistant.ask(speech);
       }
     }))
@@ -113,18 +127,29 @@ exports.Bite = functions.https.onRequest((request, response) => {
   }
 
   function userSignUp(assistant) {
-    let email = request.body.result.parameters['email'];
-    const userId = assistant.getUser().userId; 
-    
-    console.log(email);
-    userRef.once('value', ((data) => {
-        data.forEach((childData) => {
-            if (childData.val().email == email){
-                
-            }
-        })
-      }))
+    const userName = assistant.data.username;
+    if (userName != null) {
+      const speech = `<speak> You are already logged in, so it's not necessary to sign up again. </speak>`;
+      assistant.ask(speech);
+    } else {
+      let email = request.body.result.parameters['email'];
+      const userId = assistant.getUser().userId;
 
+      let speech = `<speak> I was unable to find this email in the database, did you enter the correct email? </speak>`;
+
+      console.log(email);
+      //add checks: if the userID is already in the database.
+      userRef.once('value', ((data) => {
+        data.forEach((childData) => {
+          if (childData.val().email == email) {
+            admin.database().ref('users/' + childData.key).update({ uid: userId });
+            speech = `<speak> Thanks for registering ${childData.val().display_name}. You can now place an order. </speak>`;
+            assistant.data = { username: childData.val().display_name };
+          }
+        })
+        assistant.ask(speech);
+      }))
+    }
   }
 
   function getUserOrder(assistant) {

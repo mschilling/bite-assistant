@@ -34,6 +34,7 @@ exports.Bite = functions.https.onRequest((request, response) => {
   */
   function login(assistant) {
     biteFunctions.biteUser(assistant);
+    //biteFunctions.getUserOrders(assistant);
   }
 
   /*
@@ -65,7 +66,7 @@ exports.Bite = functions.https.onRequest((request, response) => {
   }
 
   function getUserOrder(assistant) {
-    //get users latest order... and change it?
+    biteFunctions.getUserOrders(assistant);
   }
 
   function validateOrder(assistant) {

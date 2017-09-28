@@ -11,6 +11,7 @@ admin.initializeApp(functions.config().firebase);
 const orderRef = admin.database().ref('orders');
 const storeRef = admin.database().ref('stores');
 const userRef = admin.database().ref('users');
+const userOrderRef = admin.database().ref('user_order');
 
 /*
 1. Login
@@ -27,20 +28,20 @@ exports.biteUser = (assistant) => {
     userRef.once('value', ((data) => {
         data.forEach((childData) => {
             if (userId == childData.val().uid) {
-                userData = childData.val();
+                userData = childData;//save user data
                 check = 1;
             }
         })
 
+        //not logged in
         if (check == 0) {
             const speech = `<speak> Welcome, it looks like your Bite Assistant is not yet linked to an account, <break time="1"/>` +
                 `please enter the email adress of your existing Bite account to start the sign-up process. <break time="1"/>` +
                 `It is reccomended to do this by screen input. </speak>`;
             assistant.ask(speech);
         } else {
-            const speech = `<speak> Welcome ${userData.display_name}! Please select a Bite to start ordering </speak>`;
-            assistant.data = { username: userData.display_name };
-            assistant.ask(speech);
+            //get the users current open orders
+            getUserOrders(assistant, userData);
         }
     }))
 };
@@ -75,7 +76,7 @@ exports.biteLocation = (assistant) => {
     let storeNumber = 0;
     let store = "McDonalds";//fallback
     let location = "Amsterdam";//fallback
-
+    console.log(assistant.data.userOrders);
     //get the location context, this data remains in the assistant for a certain amount of actions and can be called again in later functions.
     let context = assistant.getContext("orderlocation");
     const locationContext = assistant.getArgument("Location");
@@ -102,7 +103,7 @@ exports.biteLocation = (assistant) => {
             if (store != "McDonalds") {
                 orderStore = `<break time="1"/>, do you want to order from ${store}?`;
                 assistant.data = { storeNumber: storeNumber }
-            }else{
+            } else {
                 orderStore = `<break time="1"/>. You can try ordering from another location, or start a Bite here yourself! `;
             }
             const speech = `<speak> there are currently ${i} open bites in ${locationContext}` + orderStore + `</speak>`;
@@ -110,7 +111,6 @@ exports.biteLocation = (assistant) => {
         }));
     }));
 };
-
 
 //check if user is logged in
 exports.biteLoginCheck = (assistant) => {
@@ -120,4 +120,49 @@ exports.biteLoginCheck = (assistant) => {
     } else {
         return false;
     }
+};
+
+/*
+private function getUserOrders
+get open orders for the user, handles part of the welcome intent and- 
+saves the array with database references of the users Bite order in assistant.data.userOrders
+example: [ 'user_order/-KorC-i_WY5CsFct9ncd/2zjwkTWsWAd2ZyU2EoBnQrvU2fz2' ] supports multiple user orders
+              TABLE  /     (OPEN)BITE     /            USER               / ORDERS
+calling assistant.data.userOrders returns a string so you probably need to string split the individual orders if there are more than one
+*/
+function getUserOrders(assistant, user) {
+    const userId = assistant.getUser().userId;
+    let check = 0;
+    let itemArray = [];
+
+    orderRef.once('value', ((orderData) => {
+        userOrderRef.once('value', ((userOrderData) => {
+
+            //foreach open Bite
+            orderData.forEach((orderChild) => {
+
+                //check if the Bite in the user_order table is open
+                userOrderData.forEach((childData) => {
+                    if (orderChild.key == childData.key) {
+                        userOrderData.child(childData.key).forEach(function (userOrderData) {
+                            if (user.key == userOrderData.key) {
+                                check++; //+1 order
+                                itemArray.push('user_order/' + childData.key + "/" + userOrderData.key);
+                            }
+                        })
+                    }
+                })
+            })
+            if (check == 0) {
+                assistant.data = { username: user.val().display_name };
+                const speech = `<speak> Welcome ${user.val().display_name}! You can order by saying "start" or the name of the city you would like to order at. </speak>`;
+                assistant.ask(speech);
+            } else {
+                assistant.data = { username: user.val().display_name, userOrders: itemArray };
+                const speech = `<speak> Welcome ${user.val().display_name}! You currently have ${check} open order(s).<break time="1"/>` +
+                    `Would you like to edit a current order or start another?</speak>`;
+                assistant.ask(speech);
+            }
+        }))
+    }))
 };

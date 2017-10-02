@@ -41,7 +41,7 @@ exports.biteUser = (assistant) => {
             assistant.ask(speech);
         } else {
             //get the users current open orders
-            getUserOrders(assistant, userData);
+            getUserOrder(assistant, userData);
         }
     }))
 };
@@ -76,7 +76,7 @@ exports.biteLocation = (assistant) => {
     let storeNumber = 0;
     let store = "McDonalds";//fallback
     let location = "Amsterdam";//fallback
-    console.log(assistant.data.userOrders);
+
     //get the location context, this data remains in the assistant for a certain amount of actions and can be called again in later functions.
     let context = assistant.getContext("orderlocation");
     const locationContext = assistant.getArgument("Location");
@@ -123,17 +123,120 @@ exports.biteLoginCheck = (assistant) => {
 };
 
 /*
+function to retrieve the items in the user's order.
+Since this happens in the same place, editing an order also happens in this function if the right context parameters are set.
+add/edit: snackContext contains "add", "snack" & "amount"
+remove/edit: snackContext contains "remove", "snack" & "amount" 
+if no 
+*/
+exports.getUserOrderItems = (assistant) => {
+
+    let orderString = "";
+    let productPrice = 0;
+
+    //get the arguments from the user, can be empty
+    const changeContext = assistant.getArgument("action");
+    const snackContext = assistant.getArgument("snack");
+    let amountContext = assistant.getArgument("number");
+    console.log("Change: " + changeContext + ", Snack: " + snackContext + ", Amount: " + amountContext);
+
+    //get the database link and order store
+    let dbref = "" + assistant.data.userOrders;
+    let Store = assistant.data.userStore;
+
+    const productRef = admin.database().ref('products/' + Store);
+    const userItem = admin.database().ref(dbref);
+
+    userItem.once('value', ((userItemData) => {
+        orderRef.once('value', ((orderData) => {
+            productRef.once('value', ((productdata) => {
+
+                //foreach product in the store the user is ordering from
+                productdata.forEach((productChild) => {
+
+                    //go to the products, an extra step since the database has a 2nd child element called products for some reason..
+                    productdata.child(productChild.key).forEach(function (userOrderData) {
+
+                        let check = 0;
+
+                        //add item
+                        if (userOrderData.val().name == snackContext) {
+
+                            if (changeContext == "add") {
+                                check = 1;
+                                //if amount is undefined set to 1
+                                if (amountContext == null) {
+                                    amountContext = 1;
+                                }
+                                 
+                                //check if the item is already in the order, if true, add the new amount + the current amount
+                                userItemData.forEach((itemChild) => {
+                                    if (itemChild.key == userOrderData.key) {
+                                        amountContext = parseInt(amountContext) + parseInt(itemChild.val().amount);
+                                    }
+                                })
+
+                                //update the database with the new item
+                                admin.database().ref(dbref).child(userOrderData.key).update({ amount: amountContext });
+                                orderString += `<say-as interpret-as="cardinal">${amountContext}</say-as> ${userOrderData.val().name}, `;
+                                productPrice += (parseInt(userOrderData.val().price) * amountContext);
+                                
+                            } else if (changeContext == "remove") {
+                                userItemData.forEach((itemChild) => {
+                                    if (itemChild.key == userOrderData.key) {
+                                        check = 1;
+                                        //if no amount specified: remove all
+                                        if (amountContext == null) {
+                                            admin.database().ref(dbref).child(userOrderData.key).remove();
+                                        } else {
+                                            //only remove x amount
+                                            amountContext = parseInt(itemChild.val().amount) - parseInt(amountContext);
+                                            admin.database().ref(dbref).child(userOrderData.key).update({ amount: amountContext });
+                                            orderString += `<say-as interpret-as="cardinal">${amountContext}</say-as> ${userOrderData.val().name}, `;
+                                            productPrice += (parseInt(userOrderData.val().price) * amountContext);
+                                        }
+                                    }
+                                })
+                            }
+                        }
+                        if (check == 0) {
+                            userItemData.forEach((itemChild) => {
+                                if (itemChild.key == userOrderData.key) {
+                                    orderString += `<say-as interpret-as="cardinal">${itemChild.val().amount}</say-as> ${userOrderData.val().name}, `;
+                                    productPrice += (parseInt(userOrderData.val().price) * itemChild.val().amount);
+                                }
+                            })
+                        }
+                    })
+                })
+                if (productPrice != 0) {
+                    assistant.setContext("user_order", 2);
+                    const speech = `<speak>Your order contains: ${orderString} with a total price of
+                     <say-as interpret-as="currency">EUR${productPrice / 100}</say-as>.
+                 </speak>`;
+                    assistant.ask(speech);
+                } else {
+                    //exit: in the rare occasion the user removes all his items with the bite app while editing in bite assistant.
+                    const speech = `<speak>Oops, I couldn't find any items in your order, try starting over. </speak>`;
+                    assistant.tell(speech);
+                }
+            }))
+        }))
+    }))
+};
+
+/*
 private function getUserOrders
 get open orders for the user, handles part of the welcome intent and- 
 saves the array with database references of the users Bite order in assistant.data.userOrders
 example: [ 'user_order/-KorC-i_WY5CsFct9ncd/2zjwkTWsWAd2ZyU2EoBnQrvU2fz2' ] supports multiple user orders
               TABLE  /     (OPEN)BITE     /            USER               / ORDERS
-calling assistant.data.userOrders returns a string so you probably need to string split the individual orders if there are more than one
 */
-function getUserOrders(assistant, user) {
+function getUserOrder(assistant, user) {
     const userId = assistant.getUser().userId;
     let check = 0;
     let itemArray = [];
+    let storeArray = [];
 
     orderRef.once('value', ((orderData) => {
         userOrderRef.once('value', ((userOrderData) => {
@@ -147,6 +250,7 @@ function getUserOrders(assistant, user) {
                         userOrderData.child(childData.key).forEach(function (userOrderData) {
                             if (user.key == userOrderData.key) {
                                 check++; //+1 order
+                                storeArray.push(orderChild.val().store);
                                 itemArray.push('user_order/' + childData.key + "/" + userOrderData.key);
                             }
                         })
@@ -158,7 +262,8 @@ function getUserOrders(assistant, user) {
                 const speech = `<speak> Welcome ${user.val().display_name}! You can order by saying "start" or the name of the city you would like to order at. </speak>`;
                 assistant.ask(speech);
             } else {
-                assistant.data = { username: user.val().display_name, userOrders: itemArray };
+                assistant.setContext("user_order", 2);
+                assistant.data = { username: user.val().display_name, userOrders: itemArray, userStore: storeArray };
                 const speech = `<speak> Welcome ${user.val().display_name}! You currently have ${check} open order(s).<break time="1"/>` +
                     `Would you like to edit a current order or start another?</speak>`;
                 assistant.ask(speech);

@@ -136,6 +136,8 @@ if no
 */
 exports.getUserOrderItems = (assistant) => {
 
+    let productCheck = 0; //is 1 if atleast 1 product is in the user order
+
     let orderString = "";
     let productPrice = 0;
 
@@ -147,18 +149,16 @@ exports.getUserOrderItems = (assistant) => {
     console.log("Change: " + changeContext + ", Snack: " + snackContext + ", Amount: " + amountContext + ", Store: " + storeContext);
 
     //get the database link and order store
-    let dbref = "" + assistant.data.userOrders;
-    console.log(dbref);
-    dbref = "" + assistant.data.userOrders[storeContext - 1];
-    console.log(dbref);
     let Store;
     if (storeContext) {
         Store = storeContext;
-        assistant.data = { userStore: storeContext };
+        assistant.data = { userStore: storeContext, userOrders: assistant.data.userOrders };
     } else {
         Store = assistant.data.userStore;
     }
-    console.log(Store);
+
+    let dbref = "" + assistant.data.userOrders[Store - 1];
+
     const productRef = admin.database().ref('products/' + Store);
     const userItem = admin.database().ref(dbref);
 
@@ -181,7 +181,7 @@ exports.getUserOrderItems = (assistant) => {
                             snackContext.forEach(function (entry) {
                                 //add item
                                 if (userOrderData.val().name == entry) {
-
+                                    productCheck++;
                                     if (changeContext == "add") {
                                         check = 1;
                                         //if amount is undefined set to 1
@@ -210,9 +210,14 @@ exports.getUserOrderItems = (assistant) => {
                                                 if (amountContext[i]) {
                                                     //only remove x amount
                                                     amountContext[i] = parseInt(itemChild.val().amount) - parseInt(amountContext[i]);
+                                                    //negative number check
+                                                    if(amountContext[i] <= 0){
+                                                        admin.database().ref(dbref).child(userOrderData.key).remove();
+                                                    }else{
                                                     admin.database().ref(dbref).child(userOrderData.key).update({ amount: amountContext[i] });
                                                     orderString += `<say-as interpret-as="cardinal">${amountContext[i]}</say-as> ${userOrderData.val().name}, `;
                                                     productPrice += (parseInt(userOrderData.val().price) * amountContext[i]);
+                                                    }
                                                 } else {
                                                     admin.database().ref(dbref).child(userOrderData.key).remove();
                                                 }
@@ -227,6 +232,7 @@ exports.getUserOrderItems = (assistant) => {
                         if (check == 0) {
                             userItemData.forEach((itemChild) => {
                                 if (itemChild.key == userOrderData.key) {
+                                    productCheck++;
                                     orderString += `<say-as interpret-as="cardinal">${itemChild.val().amount}</say-as> ${userOrderData.val().name}, `;
                                     productPrice += (parseInt(userOrderData.val().price) * itemChild.val().amount);
                                 }
@@ -234,14 +240,17 @@ exports.getUserOrderItems = (assistant) => {
                         }
                     })
                 })
-                if (productPrice != 0) {
+                //productCheck = 0 means there are no items in the order, prodcutprice = 0 means there are no products with a price
+                if (productCheck != 0 && productPrice != 0) {
                     assistant.setContext("user_order", 2);
                     const speech = `<speak>Your order contains: ${orderString} with a total price of
                      <say-as interpret-as="currency">EUR${productPrice / 100}</say-as>.
                  </speak>`;
                     assistant.ask(speech);
                 } else {
-                    //exit: in the rare occasion the user removes all his items with the bite app while editing in bite assistant.
+                    //EXIT: when no items can be found while already in editing mode
+                    //in the rare occasion the user removes all his items with the bite app while editing in bite assistant.
+                    //OR when the user tries editing in a store where he has no orders
                     const speech = `<speak>Oops, I couldn't find any items in your order, try starting over. </speak>`;
                     assistant.tell(speech);
                 }

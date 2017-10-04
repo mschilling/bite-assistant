@@ -211,12 +211,12 @@ exports.getUserOrderItems = (assistant) => {
                                                     //only remove x amount
                                                     amountContext[i] = parseInt(itemChild.val().amount) - parseInt(amountContext[i]);
                                                     //negative number check
-                                                    if(amountContext[i] <= 0){
+                                                    if (amountContext[i] <= 0) {
                                                         admin.database().ref(dbref).child(userOrderData.key).remove();
-                                                    }else{
-                                                    admin.database().ref(dbref).child(userOrderData.key).update({ amount: amountContext[i] });
-                                                    orderString += `<say-as interpret-as="cardinal">${amountContext[i]}</say-as> ${userOrderData.val().name}, `;
-                                                    productPrice += (parseInt(userOrderData.val().price) * amountContext[i]);
+                                                    } else {
+                                                        admin.database().ref(dbref).child(userOrderData.key).update({ amount: amountContext[i] });
+                                                        orderString += `<say-as interpret-as="cardinal">${amountContext[i]}</say-as> ${userOrderData.val().name}, `;
+                                                        productPrice += (parseInt(userOrderData.val().price) * amountContext[i]);
                                                     }
                                                 } else {
                                                     admin.database().ref(dbref).child(userOrderData.key).remove();
@@ -241,7 +241,7 @@ exports.getUserOrderItems = (assistant) => {
                     })
                 })
                 //productCheck = 0 means there are no items in the order, prodcutprice = 0 means there are no products with a price
-                if (productCheck != 0 && productPrice != 0) {
+                if (productCheck != 0) {
                     assistant.setContext("user_order", 2);
                     const speech = `<speak>Your order contains: ${orderString} with a total price of
                      <say-as interpret-as="currency">EUR${productPrice / 100}</say-as>.
@@ -251,8 +251,13 @@ exports.getUserOrderItems = (assistant) => {
                     //EXIT: when no items can be found while already in editing mode
                     //in the rare occasion the user removes all his items with the bite app while editing in bite assistant.
                     //OR when the user tries editing in a store where he has no orders
-                    const speech = `<speak>Oops, I couldn't find any items in your order, try starting over. </speak>`;
-                    assistant.tell(speech);
+                    if (storeContext) {
+                        const speech = `<speak>Oops, I couldn't find any items in your order, try starting over. </speak>`;
+                        assistant.tell(speech);
+                    } else {
+                        const speech = `<speak> Please say edit and the store you want to order from to do this. </speak>`;
+                        assistant.ask(speech);
+                    }
                 }
             }))
         }))
@@ -263,13 +268,22 @@ exports.quickOrder = (assistant) => {
 
     let store;
     let location;
-    let id = 0;
+    let check = 0;
+    let productcheck = 0;
+
+    let speech = "";
+
+    let orderString = "";
+    let productPrice = 0;
 
     //get the arguments from the user query
     const snackContext = assistant.getArgument("snack");
     let amountContext = assistant.getArgument("number");
     let storeContext = assistant.getArgument("store");
-    console.log("Snack: " + snackContext + ", Amount: " + amountContext + ", storeContext");
+    console.log("Snack: " + snackContext + ", Amount: " + amountContext + ", storeContext: " + storeContext);
+
+    const userId = assistant.getUser().userId;
+    let userKey;
 
     //get the database link and order store
     let dbref = "" + assistant.data.userOrders;
@@ -278,30 +292,29 @@ exports.quickOrder = (assistant) => {
     let productRef;
     let userOrderRef;
 
-    orderRef.once('value', ((data) => {
-        storeRef.once('value', ((storeData) => {
-            //get the store id 
-            storeData.forEach((childData) => {
-                if (storeContext == childData.val().name) {
-                    store = childData.val().name;
-                    location = childData.val().location;
-                    id = childData.val().id;
-                }
-            });
-            //get the open order
+    orderRef.once('value', ((orderData) => {
+        userRef.once('value', ((data) => {
             data.forEach((childData) => {
-                if (id == childData.val().store) {
-                    storeNumber = childData.val().store;
+                if (userId == childData.val().uid) {
+                    userKey = childData.key;//save user data
+                    console.log("user: " + userKey);
+                }
+            })
+            //get the open order
+            orderData.forEach((childData) => {
+                console.log("store check: " + childData.val().store + " " + storeContext);
+                if (storeContext == childData.val().store) {
                     location = childData.val().location;
                     productRef = admin.database().ref('products/' + childData.val().store);
-                    userOrderRef = admin.database().ref('user_order/' + childData.key)
+                    dbref = 'user_order/' + childData.key + "/" + userKey;
+                    userOrderRef = admin.database().ref('user_order/' + childData.key + "/" + userKey);
                 } else {
-                    const speech = `<speak> Looks like there aren't any open Bites for your store, you can try starting one! </speak>`;
-                    return assistant.ask(speech);
+                    speech = `<speak> Looks like there aren't any open Bites for your store, you can try starting one! </speak>`;
+                    //assistant.ask(speech);
                 }
             });
             productRef.once('value', ((productdata) => {
-                userOrderRef.once('value', ((userOrder) => {
+                userOrderRef.once('value', ((userItemData) => {
 
                     //foreach product in the store the user is ordering from
                     productdata.forEach((productChild) => {
@@ -309,23 +322,59 @@ exports.quickOrder = (assistant) => {
                         //go to the products, an extra step since the database has a 2nd child element called products for some reason..
                         productdata.child(productChild.key).forEach(function (userOrderData) {
 
-                            if (userOrderData.val().name == snackContext) {
-                                if (amountContext) {
-                                } else {
-                                    amountContext = 1;
-                                }
+                            let i = 0;
 
-                                //update the database with the new item
-                                admin.database().ref('user_order/' + childData.key).child(userOrderData.key).update({ amount: amountContext });
-                                //orderString += `<say-as interpret-as="cardinal">${amountContext}</say-as> ${userOrderData.val().name}, `;
-                                //productPrice += (parseInt(userOrderData.val().price) * amountContext);
+                            //lets the user add multiple items in 1 sentence
+                            if (snackContext != null) {
+
+                                snackContext.forEach(function (entry) {
+                                    productcheck = 0;
+
+                                    if (userOrderData.val().name == entry) {
+                                        check = 1;
+                                        productcheck = 1;
+                                        //if amount is undefined set to 1
+                                        if (amountContext[i]) {
+                                        } else {
+                                            amountContext[i] = 1;
+                                        }
+
+                                        //check if the item is already in the order, if true, add the new amount + the current amount
+                                        userItemData.forEach((itemChild) => {
+                                            if (itemChild.key == userOrderData.key) {
+                                                amountContext[i] = parseInt(amountContext[i]) + parseInt(itemChild.val().amount);
+                                            }
+                                        })
+
+                                        //update the database with the new item
+                                        admin.database().ref(dbref).child(userOrderData.key).update({ amount: amountContext[i] });
+                                        orderString += `<say-as interpret-as="cardinal">${amountContext[i]}</say-as> ${userOrderData.val().name}, `;
+                                        productPrice += (parseInt(userOrderData.val().price) * amountContext[i]);
+                                        i++;
+                                    }
+                                })
                             }
-
+                            //if check != 0 then that item was updated and thus already added to orderstring in the above part
+                            if (productcheck == 0) {
+                                userItemData.forEach((itemChild) => {
+                                    if (itemChild.key == userOrderData.key) {
+                                        orderString += `<say-as interpret-as="cardinal">${itemChild.val().amount}</say-as> ${userOrderData.val().name}, `;
+                                        productPrice += (parseInt(userOrderData.val().price) * itemChild.val().amount);
+                                    }
+                                })
+                            }
                         })
                     })
+                    if (check != 0) {
+                        assistant.setContext("user_order", 2);
+                        speech = `<speak>Your order contains: ${orderString} with a total price of
+                             <say-as interpret-as="currency">EUR${productPrice / 100}</say-as>.
+                         </speak>`;
+                    }
+                    assistant.ask(speech);
                 }))
             }))
-        }));
+        }))
     }));
 };
 
@@ -355,6 +404,7 @@ function getUserOrder(assistant, user) {
                     //check if the Bite in the user_order table is open
                     userOrderData.forEach((childData) => {
                         if (orderChild.key == childData.key) {
+                            //check user ids
                             userOrderData.child(childData.key).forEach(function (userOrderData) {
                                 if (user.key == userOrderData.key) {
                                     check++; //+1 order
@@ -365,8 +415,8 @@ function getUserOrder(assistant, user) {
                             })
                         }
                     })
-                    //get the store id 
-                    if (i <= check) {
+                    //get the store id
+                    if (i < check) {
                         storeData.forEach((childData) => {
                             if (store == childData.key) {
                                 storeString += childData.val().name + ", ";

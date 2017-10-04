@@ -26,6 +26,7 @@ exports.Bite = functions.https.onRequest((request, response) => {
   actionMap.set('input.start', getOrderLocation);
   actionMap.set('input.welcome', login);
   actionMap.set('input.welcome.followup', signUp);
+  actionMap.set('input.order', placeOrder);
   actionMap.set('input.user.order', getUserOrder);
   actionMap.set('input.user.orderedit', getUserOrder);
   assistant.handleRequest(actionMap);
@@ -88,7 +89,13 @@ exports.Bite = functions.https.onRequest((request, response) => {
   }
 
   function placeOrder(assistant) {
-    //push order to database.
+    if (biteFunctions.biteLoginCheck(assistant)) {
+      biteFunctions.quickOrder(assistant);
+    } else {
+      //redirect back to the login process.
+      assistant.setContext("DefaultWelcomeIntent-followup", 2);
+      login(assistant);
+    }
   }
 
   function createBite(assistant) {

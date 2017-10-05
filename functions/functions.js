@@ -138,8 +138,12 @@ exports.getUserOrderItems = (assistant) => {
 
     let productCheck = 0; //is 1 if atleast 1 product is in the user order
 
+    let updateString = "";
+    let updateString1 = "";
     let orderString = "";
+    let contextString = "";
     let productPrice = 0;
+    let message = "";
 
     //get the arguments from the user, can be empty
     const storeContext = assistant.getArgument("store");
@@ -153,6 +157,7 @@ exports.getUserOrderItems = (assistant) => {
     if (storeContext) {
         Store = storeContext;
         assistant.data = { userStore: storeContext, userOrders: assistant.data.userOrders };
+        message = "You can say 'add' or 'remove' followed by your snacks of choice. ";
     } else {
         Store = assistant.data.userStore;
     }
@@ -183,12 +188,15 @@ exports.getUserOrderItems = (assistant) => {
                                 if (userOrderData.val().name == entry) {
                                     productCheck++;
                                     if (changeContext == "add") {
+                                        contextString = "Added ";
                                         check = 1;
                                         //if amount is undefined set to 1
                                         if (amountContext[i]) {
                                         } else {
                                             amountContext[i] = 1;
                                         }
+
+                                        updateString += `<say-as interpret-as="cardinal">${amountContext[i]}</say-as> ${userOrderData.val().name}, `;                                        
 
                                         //check if the item is already in the order, if true, add the new amount + the current amount
                                         userItemData.forEach((itemChild) => {
@@ -199,15 +207,17 @@ exports.getUserOrderItems = (assistant) => {
 
                                         //update the database with the new item
                                         admin.database().ref(dbref).child(userOrderData.key).update({ amount: amountContext[i] });
-                                        orderString += `<say-as interpret-as="cardinal">${amountContext[i]}</say-as> ${userOrderData.val().name}, `;
+                                        updateString1 += `<say-as interpret-as="cardinal">${amountContext[i]}</say-as> ${userOrderData.val().name}, `;
                                         productPrice += (parseInt(userOrderData.val().price) * amountContext[i]);
 
                                     } else if (changeContext == "remove") {
                                         userItemData.forEach((itemChild) => {
                                             if (itemChild.key == userOrderData.key) {
+                                                contextString = "Removed ";
                                                 check = 1;
                                                 //if no amount specified: remove all
                                                 if (amountContext[i]) {
+                                                    updateString += `<say-as interpret-as="cardinal">${amountContext[i]}</say-as> ${userOrderData.val().name}, `;
                                                     //only remove x amount
                                                     amountContext[i] = parseInt(itemChild.val().amount) - parseInt(amountContext[i]);
                                                     //negative number check
@@ -241,19 +251,20 @@ exports.getUserOrderItems = (assistant) => {
                     })
                 })
                 //productCheck = 0 means there are no items in the order, prodcutprice = 0 means there are no products with a price
-                if (productCheck != 0) {
+                if (productCheck != 0 && productPrice != 0) {
                     assistant.setContext("user_order", 2);
-                    const speech = `<speak>Your order contains: ${orderString} with a total price of
-                     <say-as interpret-as="currency">EUR${productPrice / 100}</say-as>.
+                    const speech = `<speak> ${contextString} ${updateString}
+                    Your order contains: ${updateString1} ${orderString} with a total price of
+                     <say-as interpret-as="currency">EUR${productPrice / 100}</say-as>. ${message}
                  </speak>`;
                     assistant.ask(speech);
                 } else {
                     //EXIT: when no items can be found while already in editing mode
                     //in the rare occasion the user removes all his items with the bite app while editing in bite assistant.
                     //OR when the user tries editing in a store where he has no orders
-                    if (storeContext) {
+                    if (Store) {
                         const speech = `<speak>Oops, I couldn't find any items in your order, try starting over. </speak>`;
-                        assistant.tell(speech);
+                        assistant.ask(speech);
                     } else {
                         const speech = `<speak> Please say edit and the store you want to order from to do this. </speak>`;
                         assistant.ask(speech);
@@ -274,13 +285,20 @@ exports.quickOrder = (assistant) => {
     let speech = "";
 
     let orderString = "";
+    let updateString = "";
+    let updateString1 = "";
     let productPrice = 0;
 
     //get the arguments from the user query
+    const changeContext = assistant.getArgument("action");
     const snackContext = assistant.getArgument("snack");
     let amountContext = assistant.getArgument("number");
     let storeContext = assistant.getArgument("store");
-    console.log("Snack: " + snackContext + ", Amount: " + amountContext + ", storeContext: " + storeContext);
+    console.log("Change: " + changeContext + ", Snack: " + snackContext + ", Amount: " + amountContext + ", Store: " + storeContext);
+
+    if(changeContext == "remove"){
+        return assistant.ask(`<speak> You need to be in edit mode to remove an item, try saying edit, followed by your store of choice. </speak>`)
+    }
 
     const userId = assistant.getUser().userId;
     let userKey;
@@ -339,6 +357,8 @@ exports.quickOrder = (assistant) => {
                                             amountContext[i] = 1;
                                         }
 
+                                        updateString += `<say-as interpret-as="cardinal">${amountContext[i]}</say-as> ${userOrderData.val().name}, `;
+
                                         //check if the item is already in the order, if true, add the new amount + the current amount
                                         userItemData.forEach((itemChild) => {
                                             if (itemChild.key == userOrderData.key) {
@@ -348,7 +368,7 @@ exports.quickOrder = (assistant) => {
 
                                         //update the database with the new item
                                         admin.database().ref(dbref).child(userOrderData.key).update({ amount: amountContext[i] });
-                                        orderString += `<say-as interpret-as="cardinal">${amountContext[i]}</say-as> ${userOrderData.val().name}, `;
+                                        updateString1 += `<say-as interpret-as="cardinal">${amountContext[i]}</say-as> ${userOrderData.val().name}, `;
                                         productPrice += (parseInt(userOrderData.val().price) * amountContext[i]);
                                         i++;
                                     }
@@ -367,7 +387,8 @@ exports.quickOrder = (assistant) => {
                     })
                     if (check != 0) {
                         assistant.setContext("user_order", 2);
-                        speech = `<speak>Your order contains: ${orderString} with a total price of
+                        speech = `<speak> Added ${updateString}
+                        Your order contains: ${updateString1} ${orderString} with a total price of
                              <say-as interpret-as="currency">EUR${productPrice / 100}</say-as>.
                          </speak>`;
                     }

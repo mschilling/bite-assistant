@@ -102,8 +102,8 @@ exports.biteLocation = (assistant) => {
 
             //is empty if there are no open orders for that location
             if (i != 0) {
-                    orderStore = `<break time="1"/>, you can order from ${store} or open a Bite yourself`;
-                    assistant.setContext("user_order", 2);
+                orderStore = `<break time="1"/>, you can order from ${store} or open a Bite yourself`;
+                assistant.setContext("user_order", 2);
             } else {
                 orderStore = `<break time="1"/>. You can try ordering from another location, or start a Bite here yourself! `;
             }
@@ -212,7 +212,6 @@ exports.getUserOrderItems = (assistant) => {
                                             if (itemChild.key == userOrderData.key) {
                                                 contextString = "Removed ";
                                                 check = 1;
-                                                //if no amount specified: remove all
                                                 if (amountContext[i]) {
                                                     updateString += `<say-as interpret-as="cardinal">${amountContext[i]}</say-as> ${userOrderData.val().name}, `;
                                                     //only remove x amount
@@ -226,7 +225,9 @@ exports.getUserOrderItems = (assistant) => {
                                                         productPrice += (parseInt(userOrderData.val().price) * amountContext[i]);
                                                     }
                                                 } else {
+                                                    //if no amount specified: remove all
                                                     admin.database().ref(dbref).child(userOrderData.key).remove();
+                                                    updateString += `all ${userOrderData.val().name}, `;
                                                 }
                                             }
                                         })
@@ -279,6 +280,7 @@ exports.quickOrder = (assistant) => {
     let check = 0;
     let productcheck = 0;
 
+    let i = 0;
     let speech = "";
 
     let orderString = "";
@@ -335,7 +337,6 @@ exports.quickOrder = (assistant) => {
                         //go to the products, an extra step since the database has a 2nd child element called products for some reason..
                         productdata.child(productChild.key).forEach(function (userOrderData) {
 
-                            let i = 0;
                             productcheck = 0;
 
                             //lets the user add multiple items in 1 sentence
@@ -353,7 +354,7 @@ exports.quickOrder = (assistant) => {
                                         }
 
                                         updateString += `<say-as interpret-as="cardinal">${amountContext[i]}</say-as> ${userOrderData.val().name}, `;
-                                        
+
                                         let realAmount = amountContext[i];
 
                                         //check if the item is already in the order, if true, add the new amount + the current amount

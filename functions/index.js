@@ -25,7 +25,6 @@ exports.Bite = functions.https.onRequest((request, response) => {
   let actionMap = new Map();
   actionMap.set('input.start', getOrderLocation);
   actionMap.set('input.welcome', login);
-  actionMap.set('input.welcome.followup', signUp);
   actionMap.set('input.order', placeOrder);
   actionMap.set('input.user.order', getUserOrder);
   actionMap.set('input.user.orderedit', getUserOrder);
@@ -38,19 +37,6 @@ exports.Bite = functions.https.onRequest((request, response) => {
   function login(assistant) {
     biteFunctions.biteUser(assistant);
     //biteFunctions.getUserOrders(assistant);
-  }
-
-  /*
-  2. signUp
-  checks the email and adds the user to the database.
-  */
-  function signUp(assistant) {
-    if (biteFunctions.biteLoginCheck(assistant)) {
-      const speech = `<speak> You are already logged in, go ahead an place an order. </speak>`;
-      assistant.ask(speech);
-    } else {
-      biteFunctions.biteSignUp(request, assistant);
-    }
   }
 
   /*

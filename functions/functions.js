@@ -47,6 +47,7 @@ exports.biteUser = (assistant) => {
                         data.forEach((childData) => {
                             if (childData.val().email == parsedData.emails[0].value) {
                                 assistant.data = { username: childData.val().display_name, userkey: childData.key };
+
                                 userData = childData;
                                 i = 1;
                             }
@@ -163,15 +164,17 @@ exports.getUserOrderItems = (assistant) => {
     }
 
     let dbref;
-
+    let orderlink = assistant.data.userOrders;
     //get the right user order and store
-    assistant.data.userOrders.forEach(function(entry) {
-        let ref = entry.replace(/\_/,'&').split('&');
-        if(ref[0] == Store){
-        dbref = ref[1];
-        }
-     });
-
+    if (orderlink) {
+        assistant.data.userOrders.forEach(function (entry) {
+            let ref = entry.replace(/\_/, '&').split('&');
+            //ref[0] is the store and ref[1] is the db link
+            if (ref[0] == Store) {
+                dbref = ref[1];
+            }
+        });
+    }
     const productRef = admin.database().ref('products/' + Store);
     const userItem = admin.database().ref(dbref);
 
@@ -413,6 +416,68 @@ exports.quickOrder = (assistant) => {
     }));
 };
 
+//Create/Delete a Bite
+exports.AdminFunctions = (assistant) => {
+    //get the arguments from the user query
+    const changeContext = assistant.getArgument("action");
+    const storeContext = assistant.getArgument("store");
+    console.log("Change: " + changeContext + ", Store: " + storeContext);
+
+    //get the userID
+    let userkey = assistant.data.userkey;
+
+    //get the store location and name
+    let storeName;
+    let storeLocation;
+
+    let speech;
+    let ordercheck = 0;
+    orderRef.once('value', ((orderData) => {
+        storeRef.once('value', ((storeData) => {
+            orderData.forEach((childData) => {
+                if (childData.val().store == storeContext) {
+                    console.log(changeContext);
+                    if (changeContext == "add") {
+                        speech = `<speak> There is already an open Bite for this store, please choose another store. </speak>`;
+                        ordercheck++;
+                    } else if (changeContext == "remove") {
+                        admin.database().ref('orders/' + childData.key).remove();
+                        speech = `<speak> The Bite has been removed! </speak>`;
+                        ordercheck++;
+                    } else if (changeContext == "close") {
+                        admin.database().ref('orders/' + childData.key).update({
+                            status: "closed"
+                        });
+                        speech = `<speak> The Bite has been closed, no further orders can be placed. </speak>`;
+                        ordercheck++;
+                    }
+                }
+            })
+            if (ordercheck == 0) {
+                storeData.forEach((childData) => {
+                    if (childData.val().id == storeContext) {
+                        storeName = childData.val().name;
+                        storeLocation = childData.val().location;
+                    }
+                })
+                var now = new Date();
+                var newPostKey = admin.database().ref().child('orders/').push().key;
+                admin.database().ref('orders/' + newPostKey).set({
+                    close_time: now,
+                    duration: "30",
+                    location: storeLocation,
+                    open_time: now.setMinutes(now.getMinutes() + 30),
+                    opened_by: userkey,
+                    status: "open",
+                    store: storeContext
+                });
+                speech = `<speak> I’ve opened a Bite for ${storeName} in ${storeLocation}. The Bite will be open for 30 minutes so hurry up and place your orders!  </speak>`;
+            }
+            assistant.ask(speech);
+        }))
+    }))
+};
+
 /*
 private function getUserOrders
 get open orders for the user, handles part of the welcome intent and- 
@@ -461,12 +526,21 @@ function getUserOrder(assistant, user) {
                     }
                 })
                 if (check == 0) {
-                    assistant.data = { username: user.val().display_name };
+                    assistant.setContext("user_order", 2);
+                    if (user.val().admin) {
+                        assistant.setContext("admin", 10);
+                    }
+                    assistant.data = { username: user.val().display_name, userkey: user.key };
+
                     const speech = `<speak> Welcome ${user.val().display_name}! You can order by saying "start" and the name of the city or store you would like to order at. </speak>`;
                     assistant.ask(speech);
                 } else {
                     assistant.setContext("user_order", 2);
+                    if (user.val().admin) {
+                        assistant.setContext("admin", 10);
+                    }
                     assistant.data = { username: user.val().display_name, userOrders: itemArray, userStore: storeArray, userkey: user.key };
+
                     const speech = `<speak> Welcome ${user.val().display_name}! You have ${check} open order(s) at ${storeString}<break time="1"/>` +
                         `Would you like to edit a current order or start another?</speak>`;
                     assistant.ask(speech);

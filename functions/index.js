@@ -26,6 +26,7 @@ exports.Bite = functions.https.onRequest((request, response) => {
   actionMap.set('input.start', getOrderLocation);
   actionMap.set('input.welcome', login);
   actionMap.set('input.order', placeOrder);
+  actionMap.set('input.admin', createBite);
   actionMap.set('input.user.order', getUserOrder);
   actionMap.set('input.user.orderedit', getUserOrder);
   assistant.handleRequest(actionMap);
@@ -85,7 +86,7 @@ exports.Bite = functions.https.onRequest((request, response) => {
   }
 
   function createBite(assistant) {
-    //create a bite.
+    biteFunctions.AdminFunctions(assistant);
   }
 
 });

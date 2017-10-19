@@ -12,7 +12,7 @@ const orderRef = admin.database().ref('orders');
 const storeRef = admin.database().ref('stores');
 const userRef = admin.database().ref('users');
 const userOrderRef = admin.database().ref('user_order');
-
+const userOrderLockedRef = admin.database().ref('user_order_locked');
 /*
 Login
 */
@@ -267,14 +267,14 @@ exports.getUserOrderItems = (assistant) => {
                 if (productCheck != 0 && productPrice != 0) {
                     assistant.setContext("user_order", 2);
                     assistant.setContext("edit_order", 2);
-                    if(contextString == "" && changeContext){
+                    if (contextString == "" && changeContext) {
                         speech = `<speak> The items you want aren't available, try adding something else or change stores. </speak>`;
-                    }else {
+                    } else {
                         speech = `<speak> ${contextString} ${updateString}
                         Your order contains: ${updateString1} ${orderString} with a total price of
                         <say-as interpret-as="currency">EUR${productPrice / 100}</say-as>. ${message}
                         </speak>`;
-                    } 
+                    }
                     assistant.ask(speech);
                 } else {
                     //EXIT: when no items can be found while already in editing mode
@@ -489,6 +489,111 @@ exports.AdminFunctions = (assistant) => {
                 speech = `<speak> I’ve opened a Bite for ${storeName} in ${storeLocation}. The Bite will be open for 30 minutes so hurry up and place your orders!  </speak>`;
             }
             assistant.ask(speech);
+        }))
+    }))
+};
+
+exports.lockOrder = (assistant) => {
+    //get the arguments from the user query
+    const storeContext = assistant.getArgument("store");
+
+    //get the userID
+    let userkey = assistant.data.userkey;
+
+    let speech;
+    let ordercheck = 0;
+
+    userRef.once('value', ((userData) => {
+        orderRef.once('value', ((orderData) => {
+            userOrderRef.once('value', ((userOrderData) => {
+
+                //foreach open Bite
+                orderData.forEach((orderChild) => {
+
+                    //check if the Bite in the user_order table is open
+                    userOrderData.forEach((childData) => {
+
+                        if (orderChild.key == childData.key) {
+                            if (storeContext == orderChild.val().store) {
+                                //check user ids
+                                userOrderData.child(childData.key).forEach(function (userOrderData) {
+                                    if (userkey == userOrderData.key) {
+                                        admin.database().ref('user_order_locked/' + childData.key + "/" + userOrderData.key + "/").set(true);
+                                        ordercheck++;
+                                    }
+                                })
+                            }
+                        }
+                    })
+                })
+
+                let speech;
+
+                if (ordercheck == 0) {
+                    speech = `<speak> Sorry, I couldn't lock your order. You can try for a different store.  </speak>`;
+                } else {
+                    speech = `<speak> Your order has been locked! Anything else you want to do?</speak>`;
+                }
+                assistant.ask(speech);
+            }))
+        }))
+    }))
+};
+
+exports.finishOrder = (assistant) => {
+    //get the arguments from the user query
+    const storeContext = assistant.getArgument("store");
+
+    //get the userID
+    let userkey = assistant.data.userkey;
+
+    let speech;
+    //users in order
+    let users = 0;
+    //users that have their order locked
+    let lockedUsers = 0;
+
+    userRef.once('value', ((userData) => {
+        orderRef.once('value', ((orderData) => {
+            userOrderRef.once('value', ((userOrderData) => {
+                userOrderLockedRef.once('value', ((userOrderLockedData) => {
+
+                    //foreach open Bite
+                    orderData.forEach((orderChild) => {
+
+                        //check if the Bite in the user_order table is open
+                        userOrderData.forEach((childData) => {
+                            if (orderChild.key == childData.key) {
+
+                                //get the right store
+                                if (storeContext == orderChild.val().store) {
+                                    userOrderData.child(childData.key).forEach(function (allUsers) {
+                                        users++;
+                                    })
+
+                                    userOrderLockedData.forEach(function (userOrderLockedDataLoop) {
+                                        if (userOrderLockedDataLoop.key == childData.key) {
+                                            userOrderLockedData.child(userOrderLockedDataLoop.key).forEach(function (lockedChildData) {
+                                                console.log("userkey: " + lockedChildData.key);
+                                                lockedUsers++;
+                                            })
+                                        }
+                                    })
+                                }
+                            }
+                        })
+                    })
+                    let speech;
+                    if (users == lockedUsers && users != 0) {
+                        speech = `<speak> All ${users} user(s) have locked their order. Do you want me to tell you the total list of orders?</speak>`;
+                    } else if(users != 0){
+                        speech = `<speak> ${lockedUsers} out of ${users} user(s) have locked their order. Continue ordering or place the order anyways? </speak>`;
+                    } else{
+                        speech = `<speak> This Bite doesn't have any orders yet, maybe you should place the first one! </speak>`;
+                    }
+                    assistant.ask(speech);
+                }))
+            }))
         }))
     }))
 };

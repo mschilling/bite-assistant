@@ -27,6 +27,8 @@ exports.Bite = functions.https.onRequest((request, response) => {
   actionMap.set('input.welcome', login);
   actionMap.set('input.order', placeOrder);
   actionMap.set('input.admin', createBite);
+  actionMap.set('input.lock', lockOrder);
+  actionMap.set('input.finish', finishOrder);
   actionMap.set('input.user.order', getUserOrder);
   actionMap.set('input.user.orderedit', getUserOrder);
   assistant.handleRequest(actionMap);
@@ -65,16 +67,6 @@ exports.Bite = functions.https.onRequest((request, response) => {
     }
   }
 
-  function validateOrder(assistant) {
-    let value = assistant.data.storeNumber;
-    //check user order against the database.
-    //order must be in the same shop
-    //get prices
-    //confirm order
-    assistant.ask("Your order: ... with a total price of: ... do you want to confirm this order?");
-    //placeOrder();
-  }
-
   function placeOrder(assistant) {
     if (biteFunctions.biteLoginCheck(assistant)) {
       biteFunctions.quickOrder(assistant);
@@ -87,6 +79,14 @@ exports.Bite = functions.https.onRequest((request, response) => {
 
   function createBite(assistant) {
     biteFunctions.AdminFunctions(assistant);
+  }
+
+  function lockOrder(assistant) {
+    biteFunctions.lockOrder(assistant);
+  }
+
+  function finishOrder(assistant) {
+    biteFunctions.finishOrder(assistant);
   }
 
 });

@@ -108,6 +108,7 @@ exports.biteLocation = (assistant) => {
             if (i != 0) {
                 orderStore = `<break time="1"/>, you can order from ${store} or open a Bite yourself`;
                 assistant.setContext("user_order", 2);
+                assistant.setContext("edit_order", 2);
             } else {
                 orderStore = `<break time="1"/>. You can try ordering from another location, or start a Bite here yourself! `;
             }
@@ -133,7 +134,6 @@ function to retrieve the items in the user's order.
 Since this happens in the same place, editing an order also happens in this function if the right context parameters are set.
 add/edit: snackContext contains "add", "snack" & "amount"
 remove/edit: snackContext contains "remove", "snack" & "amount" 
-if no 
 */
 exports.getUserOrderItems = (assistant) => {
 
@@ -158,7 +158,7 @@ exports.getUserOrderItems = (assistant) => {
     if (storeContext) {
         Store = storeContext;
         assistant.data = { userStore: storeContext, userOrders: assistant.data.userOrders };
-        message = "You can say 'add' or 'remove' followed by your snacks of choice. ";
+        message = "You can add and remove items from your order, or lock it when you're done. ";
     } else {
         Store = assistant.data.userStore;
     }
@@ -265,6 +265,7 @@ exports.getUserOrderItems = (assistant) => {
                 //productCheck = 0 means there are no items in the order, prodcutprice = 0 means there are no products with a price
                 if (productCheck != 0 && productPrice != 0) {
                     assistant.setContext("user_order", 2);
+                    assistant.setContext("edit_order", 2);
                     const speech = `<speak> ${contextString} ${updateString}
                     Your order contains: ${updateString1} ${orderString} with a total price of
                      <say-as interpret-as="currency">EUR${productPrice / 100}</say-as>. ${message}
@@ -333,10 +334,15 @@ exports.quickOrder = (assistant) => {
             //get the open order
             orderData.forEach((childData) => {
                 if (storeContext == childData.val().store) {
-                    location = childData.val().location;
-                    productRef = admin.database().ref('products/' + childData.val().store);
-                    dbref = 'user_order/' + childData.key + "/" + userKey;
-                    userOrderRef = admin.database().ref('user_order/' + childData.key + "/" + userKey);
+                    if (childData.val().status == "closed") {
+                        return assistant.ask(`<speak> Sorry, this Bite is already closed, try to be faster next time. </speak>`)
+                    } else {
+                        location = childData.val().location;
+                        productRef = admin.database().ref('products/' + childData.val().store);
+                        dbref = 'user_order/' + childData.key + "/" + userKey;
+                        userOrderRef = admin.database().ref('user_order/' + childData.key + "/" + userKey);
+                    }
+
                 } else {
                     speech = `<speak> Looks like there aren't any open Bites for your store, you can try starting one! </speak>`;
                     //assistant.ask(speech);
@@ -400,9 +406,11 @@ exports.quickOrder = (assistant) => {
                         })
                         if (check != 0) {
                             assistant.setContext("user_order", 2);
+                            assistant.setContext("edit_order", 2);
                             speech = `<speak> Added ${updateString}
-                        Your order contains: ${updateString1} ${orderString} with a total price of
-                             <say-as interpret-as="currency">EUR${productPrice / 100}</say-as>.
+                             Your order contains: ${updateString1} ${orderString} with a total price of
+                             <say-as interpret-as="currency">EUR${productPrice / 100}</say-as>. 
+                             You can add and remove items from your order, or lock it when you're done.
                          </speak>`;
                         }
                         assistant.ask(speech);
@@ -463,10 +471,10 @@ exports.AdminFunctions = (assistant) => {
                 var now = new Date();
                 var newPostKey = admin.database().ref().child('orders/').push().key;
                 admin.database().ref('orders/' + newPostKey).set({
-                    close_time: now,
-                    duration: "30",
+                    open_time: now.setMinutes(now.getMinutes() + 0),
+                    close_time: now.setMinutes(now.getMinutes() + 30),
+                    duration: 30,
                     location: storeLocation,
-                    open_time: now.setMinutes(now.getMinutes() + 30),
                     opened_by: userkey,
                     status: "open",
                     store: storeContext
@@ -526,7 +534,7 @@ function getUserOrder(assistant, user) {
                     }
                 })
                 if (check == 0) {
-                    assistant.setContext("user_order", 2);
+                    assistant.setContext("user_order", 5);
                     if (user.val().admin) {
                         assistant.setContext("admin", 10);
                     }
@@ -536,6 +544,7 @@ function getUserOrder(assistant, user) {
                     assistant.ask(speech);
                 } else {
                     assistant.setContext("user_order", 2);
+                    assistant.setContext("edit_order", 2);
                     if (user.val().admin) {
                         assistant.setContext("admin", 10);
                     }

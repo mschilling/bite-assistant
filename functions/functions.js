@@ -145,6 +145,7 @@ exports.getUserOrderItems = (assistant) => {
     let contextString = "";
     let productPrice = 0;
     let message = "";
+    let speech = "";
 
     //get the arguments from the user, can be empty
     const storeContext = assistant.getArgument("store");
@@ -266,10 +267,14 @@ exports.getUserOrderItems = (assistant) => {
                 if (productCheck != 0 && productPrice != 0) {
                     assistant.setContext("user_order", 2);
                     assistant.setContext("edit_order", 2);
-                    const speech = `<speak> ${contextString} ${updateString}
-                    Your order contains: ${updateString1} ${orderString} with a total price of
-                     <say-as interpret-as="currency">EUR${productPrice / 100}</say-as>. ${message}
-                 </speak>`;
+                    if(contextString == "" && changeContext){
+                        speech = `<speak> The items you want aren't available, try adding something else or change stores. </speak>`;
+                    }else {
+                        speech = `<speak> ${contextString} ${updateString}
+                        Your order contains: ${updateString1} ${orderString} with a total price of
+                        <say-as interpret-as="currency">EUR${productPrice / 100}</say-as>. ${message}
+                        </speak>`;
+                    } 
                     assistant.ask(speech);
                 } else {
                     //EXIT: when no items can be found while already in editing mode
@@ -405,7 +410,7 @@ exports.quickOrder = (assistant) => {
                             })
                         })
                         if (check != 0) {
-                            assistant.setContext("user_order", 2);
+                            assistant.data = { userStore: storeContext, userOrders: assistant.data.userOrders };
                             assistant.setContext("edit_order", 2);
                             speech = `<speak> Added ${updateString}
                              Your order contains: ${updateString1} ${orderString} with a total price of
@@ -479,6 +484,8 @@ exports.AdminFunctions = (assistant) => {
                     status: "open",
                     store: storeContext
                 });
+                assistant.setContext("edit_order", 2);
+                assistant.setContext("user_order", 2);
                 speech = `<speak> I’ve opened a Bite for ${storeName} in ${storeLocation}. The Bite will be open for 30 minutes so hurry up and place your orders!  </speak>`;
             }
             assistant.ask(speech);

@@ -114,7 +114,7 @@ exports.userSignUp = (request, assistant) => {
         const userId = assistant.getUser().userId;
 
         let speech = `<speak> You have entered an invalid code, please make sure you use the right code. </speak>`;
-        let i= 0;
+        let i = 0;
 
         console.log(email);
         //add checks: if the userID is already in the database.
@@ -127,10 +127,10 @@ exports.userSignUp = (request, assistant) => {
                     i++;
                 }
             })
-            if(i == 0){
+            if (i == 0) {
                 assistant.tell(speech);
             }
-            
+
         }))
     }
 
@@ -492,11 +492,13 @@ exports.quickOrder = (assistant) => {
 
 //Create/Delete a Bite
 exports.AdminFunctions = (assistant) => {
+    //check if the device is not a speaker
+    let hasScreen = assistant.hasSurfaceCapability(assistant.SurfaceCapabilities.SCREEN_OUTPUT)
     //get the arguments from the user query
     const changeContext = assistant.getArgument("action");
     const storeContext = assistant.getArgument("store");
     console.log("Change: " + changeContext + ", Store: " + storeContext);
-
+    console.log(assistant.getContext("admin"));
     //get the userID
     let userkey = assistant.data.userkey;
 
@@ -504,7 +506,7 @@ exports.AdminFunctions = (assistant) => {
     let storeName;
     let storeLocation;
 
-    let speech;
+    let speech = `<speak> You don't have permission to close this Bite. Make sure that you're an admin and that you're using a mobile device. </speak>`;
     let ordercheck = 0;
     orderRef.once('value', ((orderData) => {
         storeRef.once('value', ((storeData) => {
@@ -515,14 +517,25 @@ exports.AdminFunctions = (assistant) => {
                         speech = `<speak> There is already an open Bite for this store, please choose another store. </speak>`;
                         ordercheck++;
                     } else if (changeContext == "remove") {
-                        admin.database().ref('orders/' + childData.key).remove();
-                        speech = `<speak> The Bite has been removed! Anything else you want to do?</speak>`;
+                        if (hasScreen) {
+                            if (assistant.data.userkey == childData.val().opened_by || assistant.getContext("admin")) {
+                                admin.database().ref('orders/' + childData.key).remove();
+                                speech = `<speak> The Bite has been removed! Anything else you want to do?</speak>`;
+                            }
+                        }
                         ordercheck++;
                     } else if (changeContext == "close") {
-                        admin.database().ref('orders/' + childData.key).update({
-                            status: "closed"
-                        });
-                        speech = `<speak> The Bite has been closed and no further orders can be placed. </speak>`;
+                        if (hasScreen) {
+                            if (assistant.data.userkey == childData.val().opened_by || assistant.getContext("admin")) {
+                                admin.database().ref('orders/' + childData.key).update({
+                                    status: "closed"
+                                });
+                                speech = `<speak> The Bite has been closed and no further orders can be placed. </speak>`;
+                            }
+                        }
+                        ordercheck++;
+                    } else {
+                        speech = `<speak> Please use one of the Open, Close or Remove commands. </speak>`;
                         ordercheck++;
                     }
                 }
@@ -733,14 +746,29 @@ function getUserOrder(assistant, user) {
     let store;
     let storeString = "";
     let i = 0;
-
+    let o = 0;
+    let message = " A Bite just Opened at ";
+    let speech;
     orderRef.once('value', ((orderData) => {
         userOrderRef.once('value', ((userOrderData) => {
             storeRef.once('value', ((storeData) => {
 
                 //foreach open Bite
                 orderData.forEach((orderChild) => {
-
+                    function isInToday(inputDate) {
+                        var today = new Date();
+                        var date = new Date(inputDate);
+                        if (today.setHours(0, 0, 0, 0) == date.setHours(0, 0, 0, 0)) { return true; }
+                        else { return false; }
+                    }
+                    if (isInToday(orderChild.val().open_time)) {
+                        storeData.forEach((childData) => {
+                            if (orderChild.val().store == childData.key) {
+                                message += childData.val().name + ", ";
+                                o = 1;
+                            }
+                        })
+                    }
                     //check if the Bite in the user_order table is open
                     userOrderData.forEach((childData) => {
 
@@ -772,8 +800,12 @@ function getUserOrder(assistant, user) {
                         assistant.setContext("admin", 10);
                     }
                     assistant.data = { username: user.val().display_name, userkey: user.key };
+                    if (o == 0) {
+                        speech = `<speak> Welcome ${user.val().display_name}! No Bites have recently been opened, do you want to start one?</speak>`;
+                    } else {
+                        speech = `<speak> Welcome ${user.val().display_name}!` + message + ` do you want to place an order?.</speak>`;
+                    }
 
-                    const speech = `<speak> Welcome ${user.val().display_name}! You can order by saying "start" and the name of the city you would like to order at. </speak>`;
                     assistant.ask(speech);
                 } else {
                     assistant.setContext("user_order", 2);

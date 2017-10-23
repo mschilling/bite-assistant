@@ -25,9 +25,11 @@ exports.Bite = functions.https.onRequest((request, response) => {
   let actionMap = new Map();
   actionMap.set('input.start', getOrderLocation);
   actionMap.set('input.welcome', login);
+  actionMap.set('input.welcome.followup', signup);
   actionMap.set('input.order', placeOrder);
   actionMap.set('input.admin', createBite);
   actionMap.set('input.lock', lockOrder);
+  actionMap.set('input.listorder', listTotalOrder);
   actionMap.set('input.finish', finishOrder);
   actionMap.set('input.user.order', getUserOrder);
   actionMap.set('input.user.orderedit', getUserOrder);
@@ -39,6 +41,11 @@ exports.Bite = functions.https.onRequest((request, response) => {
   */
   function login(assistant) {
     biteFunctions.biteUser(assistant);
+    //biteFunctions.getUserOrders(assistant);
+  }
+
+  function signup(assistant) {
+    biteFunctions.userSignUp(request, assistant);
     //biteFunctions.getUserOrders(assistant);
   }
 
@@ -87,6 +94,10 @@ exports.Bite = functions.https.onRequest((request, response) => {
 
   function finishOrder(assistant) {
     biteFunctions.finishOrder(assistant);
+  }
+
+  function listTotalOrder(assistant) {
+    biteFunctions.listTotalOrder(assistant);
   }
 
 });

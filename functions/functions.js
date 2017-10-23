@@ -13,67 +13,128 @@ const storeRef = admin.database().ref('stores');
 const userRef = admin.database().ref('users');
 const userOrderRef = admin.database().ref('user_order');
 const userOrderLockedRef = admin.database().ref('user_order_locked');
+
 /*
 Login
 */
 exports.biteUser = (assistant) => {
 
-    let parsedData; //stores the parsed json 
-    let userData; // stores the user data when the email matches in the db
-    let speech = "";
-    let i = 0;
+    let check = 0; // 0 is negative match, 1 is positive.
+    let userData; // stores the user data when the uid matches in the db
 
-    let accestoken = assistant.getUser().accessToken;
-    console.log("Access token: " + accestoken);
+    // get the uid from your assistant, this uid is bound to email and should be the same across all your devices.
+    //the uid is not permanent and can be reset by the user, but usually doesn't change.
+    const userId = assistant.getUser().userId;
 
-    if (accestoken) {
-        const https = require('https');
-        https.get('https://www.googleapis.com/plus/v1/people/me?access_token=' + assistant.getUser().accessToken, (resp) => {
-            let data = '';
+    //loop through all users
+    userRef.once('value', ((data) => {
+        data.forEach((childData) => {
 
-            // A chunk of data has been recieved.
-            resp.on('data', (chunk) => {
-                data += chunk;
-            });
+            if (userId == childData.val().uid) {
+                userData = childData;
+                check = 1;
+            }
+        })
 
-            // The whole response has been received. Print out the result.
-            resp.on('end', () => {
-                parsedData = JSON.parse(data);
-                console.log(parsedData.domain);
-                console.log(parsedData.emails[0].value);
-                //check if the user is using a move4mobile google account
-                if (parsedData.domain == "move4mobile.com") {
-                    userRef.once('value', ((data) => {
-                        data.forEach((childData) => {
-                            if (childData.val().email == parsedData.emails[0].value) {
-                                assistant.data = { username: childData.val().display_name, userkey: childData.key };
+        if (check == 0) {
+            const speech = `<speak> Welcome, it looks like your Bite Assistant is not yet linked to an account, <break time="1"/>` +
+                `please say the code provided by your company to start the linking proccess. <break time="1"/></speak>`;
+            assistant.ask(speech);
+        } else {
+            getUserOrder(assistant, userData);
+        }
+    }))
 
-                                userData = childData;
-                                i = 1;
-                            }
-                        })
-                        if (i == 1) {
-                            //get the users current open orders and finish the welcome intent
-                            getUserOrder(assistant, userData);
-                        } else {
-                            speech = `<speak> I couldn't find an account for this email.</speak>`;
-                            assistant.tell(speech);
+    //OAUTH SIGNIN 
 
-                            //TODO: Create the user account
+    // let parsedData; //stores the parsed json 
+    // let userData; // stores the user data when the email matches in the db
+    // let speech = "";
+    // let i = 0;
 
-                        }
-                    }));
-                } else {
-                    speech = `<speak> This app is currently only available to Move4Mobile employees. </speak>`;
-                    assistant.tell(speech);
-                }
-            });
+    // let accestoken = assistant.getUser().accessToken;
+    // console.log("Access token: " + accestoken);
 
-        }).on("error", (err) => {
-            console.log("Error: " + err.message);
-        });
-    }
+    // if (accestoken) {
+    //     const https = require('https');
+    //     https.get('https://www.googleapis.com/plus/v1/people/me?access_token=' + assistant.getUser().accessToken, (resp) => {
+    //         let data = '';
+
+    //         // A chunk of data has been recieved.
+    //         resp.on('data', (chunk) => {
+    //             data += chunk;
+    //         });
+
+    //         // The whole response has been received. Print out the result.
+    //         resp.on('end', () => {
+    //             parsedData = JSON.parse(data);
+    //             //console.log(parsedData.domain);
+    //             //console.log(parsedData.emails[0].value);
+    //             //check if the user is using a move4mobile google account
+    //             if (parsedData.domain == "move4mobile.com") {
+    //                 userRef.once('value', ((data) => {
+    //                     data.forEach((childData) => {
+    //                         if (childData.val().email == parsedData.emails[0].value) {
+    //                             assistant.data = { username: childData.val().display_name, userkey: childData.key };
+
+    //                             userData = childData;
+    //                             i = 1;
+    //                         }
+    //                     })
+    //                     if (i == 1) {
+    //                         //get the users current open orders and finish the welcome intent
+    //                         getUserOrder(assistant, userData);
+    //                     } else {
+    //                         speech = `<speak> I couldn't find an account for this email.</speak>`;
+    //                         assistant.tell(speech);
+
+    //                         //TODO: Create the user account
+
+    //                     }
+    //                 }));
+    //             } else {
+    //                 speech = `<speak> This app is currently only available to Move4Mobile employees. </speak>`;
+    //                 assistant.tell(speech);
+    //             }
+    //         });
+
+    //     }).on("error", (err) => {
+    //         console.log("Error: " + err.message);
+    //     });
+    // }
 };
+
+exports.userSignUp = (request, assistant) => {
+    const userName = assistant.data.username;
+    if (userName != null) {
+        const speech = `<speak> You are already logged in, so it's not necessary to sign up again. </speak>`;
+        assistant.ask(speech);
+    } else {
+        let email = request.body.result.parameters['number'];
+        const userId = assistant.getUser().userId;
+
+        let speech = `<speak> You have entered an invalid code, please make sure you use the right code. </speak>`;
+        let i= 0;
+
+        console.log(email);
+        //add checks: if the userID is already in the database.
+        userRef.once('value', ((data) => {
+            data.forEach((childData) => {
+                if (childData.val().code == email) {
+                    admin.database().ref('users/' + childData.key).update({ uid: userId });
+                    assistant.data = { username: childData.val().display_name };
+                    getUserOrder(assistant, childData);
+                    i++;
+                }
+            })
+            if(i == 0){
+                assistant.tell(speech);
+            }
+            
+        }))
+    }
+
+}
 
 /*
 getOrderLocation
@@ -455,13 +516,13 @@ exports.AdminFunctions = (assistant) => {
                         ordercheck++;
                     } else if (changeContext == "remove") {
                         admin.database().ref('orders/' + childData.key).remove();
-                        speech = `<speak> The Bite has been removed! </speak>`;
+                        speech = `<speak> The Bite has been removed! Anything else you want to do?</speak>`;
                         ordercheck++;
                     } else if (changeContext == "close") {
                         admin.database().ref('orders/' + childData.key).update({
                             status: "closed"
                         });
-                        speech = `<speak> The Bite has been closed, no further orders can be placed. </speak>`;
+                        speech = `<speak> The Bite has been closed and no further orders can be placed. </speak>`;
                         ordercheck++;
                     }
                 }
@@ -553,47 +614,107 @@ exports.finishOrder = (assistant) => {
     //users that have their order locked
     let lockedUsers = 0;
 
-    userRef.once('value', ((userData) => {
-        orderRef.once('value', ((orderData) => {
-            userOrderRef.once('value', ((userOrderData) => {
-                userOrderLockedRef.once('value', ((userOrderLockedData) => {
+    let saveOrder;
 
-                    //foreach open Bite
-                    orderData.forEach((orderChild) => {
+    orderRef.once('value', ((orderData) => {
+        userOrderRef.once('value', ((userOrderData) => {
+            userOrderLockedRef.once('value', ((userOrderLockedData) => {
 
-                        //check if the Bite in the user_order table is open
-                        userOrderData.forEach((childData) => {
-                            if (orderChild.key == childData.key) {
+                //foreach open Bite
+                orderData.forEach((orderChild) => {
 
-                                //get the right store
-                                if (storeContext == orderChild.val().store) {
-                                    userOrderData.child(childData.key).forEach(function (allUsers) {
-                                        users++;
-                                    })
+                    //check if the Bite in the user_order table is open
+                    userOrderData.forEach((childData) => {
+                        if (orderChild.key == childData.key) {
 
-                                    userOrderLockedData.forEach(function (userOrderLockedDataLoop) {
-                                        if (userOrderLockedDataLoop.key == childData.key) {
-                                            userOrderLockedData.child(userOrderLockedDataLoop.key).forEach(function (lockedChildData) {
-                                                console.log("userkey: " + lockedChildData.key);
-                                                lockedUsers++;
-                                            })
-                                        }
-                                    })
+                            //get the right store
+                            if (storeContext == orderChild.val().store) {
+                                saveOrder = childData.key;
+                                userOrderData.child(childData.key).forEach(function (allUsers) {
+                                    users++;
+                                })
+
+                                userOrderLockedData.forEach(function (userOrderLockedDataLoop) {
+                                    if (userOrderLockedDataLoop.key == childData.key) {
+                                        userOrderLockedData.child(userOrderLockedDataLoop.key).forEach(function (lockedChildData) {
+                                            lockedUsers++;
+                                        })
+                                    }
+                                })
+                            }
+                        }
+                    })
+                })
+                assistant.data = { userStore: storeContext, userOrders: assistant.data.userOrders, saveOrder: saveOrder };
+                if (users == lockedUsers && users != 0) {
+                    speech = `<speak> All ${users} user(s) have locked their order. Do you want me to tell you the total list of orders?</speak>`;
+                } else if (users != 0) {
+                    speech = `<speak> ${lockedUsers} out of ${users} user(s) have locked their order. Want to hear all orders? </speak>`;
+                } else {
+                    speech = `<speak> This Bite doesn't have any orders yet, maybe you should place the first one! </speak>`;
+                }
+                assistant.ask(speech);
+            }))
+        }))
+    }))
+};
+
+exports.listTotalOrder = (assistant) => {
+    //get the store that was saved during finishOrder();
+    const storeContext = assistant.data.userStore;
+
+    //get the userID
+    let userkey = assistant.data.userkey;
+    let savedOrder = assistant.data.saveOrder;
+
+    let nameArray = [];
+    let amountArray = [];
+    let i = 0;
+    let orderString = "";
+    let orderprice = 0;
+    let speech;
+
+    const userOrderRefUser = admin.database().ref('user_order/' + savedOrder);
+    const productRef = admin.database().ref('products/' + storeContext);
+
+    userOrderRefUser.once('value', ((userOrderData) => {
+        productRef.once('value', ((productData) => {
+
+            //foreach user that has placed an order
+            userOrderData.forEach((orderChildData) => {
+                userOrderData.child(orderChildData.key).forEach((orderItemData) => {
+
+                    productData.forEach((productChildData) => {
+                        //go to the products, an extra step since the database has a 2nd child element called products for some reason..
+                        productData.child(productChildData.key).forEach(function (item) {
+
+                            if (item.key == orderItemData.key) {
+                                //if not in array
+                                if (nameArray.indexOf(item.val().name) == -1) {
+                                    nameArray.push(item.val().name);
+                                    amountArray.push(orderItemData.val().amount);
+                                    i++;
+                                } else {
+                                    let index = nameArray.indexOf(item.val().name);
+                                    let value = amountArray[index];
+                                    amountArray[index] = (value + orderItemData.val().amount);
                                 }
+                                orderprice += (orderItemData.val().amount * item.val().price);
                             }
                         })
                     })
-                    let speech;
-                    if (users == lockedUsers && users != 0) {
-                        speech = `<speak> All ${users} user(s) have locked their order. Do you want me to tell you the total list of orders?</speak>`;
-                    } else if(users != 0){
-                        speech = `<speak> ${lockedUsers} out of ${users} user(s) have locked their order. Continue ordering or place the order anyways? </speak>`;
-                    } else{
-                        speech = `<speak> This Bite doesn't have any orders yet, maybe you should place the first one! </speak>`;
-                    }
-                    assistant.ask(speech);
-                }))
-            }))
+                })
+            })
+
+            for (i = 0; i < amountArray.length; i++) {
+                orderString += `<say-as interpret-as="cardinal">` + amountArray[i] + "</say-as> " + nameArray[i] + ", ";
+            }
+            if (i != 0) {
+                speech = `<speak> The combined order of all users consists of: ${orderString} with a total cost of <say-as interpret-as="currency">EUR${orderprice / 100}</say-as>. </speak>`;
+            } else {
+                speech = `<speak> Oops, something went wrong, try again for a different store.  </speak>`;
+            }
+            assistant.ask(speech);
         }))
     }))
 };
@@ -602,7 +723,7 @@ exports.finishOrder = (assistant) => {
 private function getUserOrders
 get open orders for the user, handles part of the welcome intent and- 
 saves the array with database references of the users Bite order in assistant.data.userOrders
-example: [ 'user_order/-KorC-i_WY5CsFct9ncd/2zjwkTWsWAd2ZyU2EoBnQrvU2fz2' ] supports multiple user orders
+example: [ 'user_order/-KorC-i_WY5CsFct9ncd/3fKhikTWsWAd2ZyU2UybQrvU2fz2' ] supports multiple user orders
               TABLE  /     (OPEN)BITE     /            USER               / ORDERS
 */
 function getUserOrder(assistant, user) {
@@ -652,7 +773,7 @@ function getUserOrder(assistant, user) {
                     }
                     assistant.data = { username: user.val().display_name, userkey: user.key };
 
-                    const speech = `<speak> Welcome ${user.val().display_name}! You can order by saying "start" and the name of the city or store you would like to order at. </speak>`;
+                    const speech = `<speak> Welcome ${user.val().display_name}! You can order by saying "start" and the name of the city you would like to order at. </speak>`;
                     assistant.ask(speech);
                 } else {
                     assistant.setContext("user_order", 2);

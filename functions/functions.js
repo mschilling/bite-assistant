@@ -19,122 +19,64 @@ Login
 */
 exports.biteUser = (assistant) => {
 
-    let check = 0; // 0 is negative match, 1 is positive.
-    let userData; // stores the user data when the uid matches in the db
-
-    // get the uid from your assistant, this uid is bound to email and should be the same across all your devices.
-    //the uid is not permanent and can be reset by the user, but usually doesn't change.
-    const userId = assistant.getUser().userId;
-
-    //loop through all users
-    userRef.once('value', ((data) => {
-        data.forEach((childData) => {
-
-            if (userId == childData.val().uid) {
-                userData = childData;
-                check = 1;
-            }
-        })
-
-        if (check == 0) {
-            const speech = `<speak> Welcome, it looks like your Bite Assistant is not yet linked to an account, <break time="1"/>` +
-                `please say the code provided by your company to start the linking proccess. <break time="1"/></speak>`;
-            assistant.ask(speech);
-        } else {
-            getUserOrder(assistant, userData);
-        }
-    }))
-
     //OAUTH SIGNIN 
 
-    // let parsedData; //stores the parsed json 
-    // let userData; // stores the user data when the email matches in the db
-    // let speech = "";
-    // let i = 0;
+    let parsedData; //stores the parsed json 
+    let userData; // stores the user data when the email matches in the db
+    let speech = "";
+    let i = 0;
 
-    // let accestoken = assistant.getUser().accessToken;
-    // console.log("Access token: " + accestoken);
+    let accestoken = assistant.getUser().accessToken;
+    console.log("Access token: " + accestoken);
 
-    // if (accestoken) {
-    //     const https = require('https');
-    //     https.get('https://www.googleapis.com/plus/v1/people/me?access_token=' + assistant.getUser().accessToken, (resp) => {
-    //         let data = '';
+    if (accestoken) {
+        const https = require('https');
+        https.get('https://www.googleapis.com/plus/v1/people/me?access_token=' + assistant.getUser().accessToken, (resp) => {
+            let data = '';
 
-    //         // A chunk of data has been recieved.
-    //         resp.on('data', (chunk) => {
-    //             data += chunk;
-    //         });
+            // A chunk of data has been recieved.
+            resp.on('data', (chunk) => {
+                data += chunk;
+            });
 
-    //         // The whole response has been received. Print out the result.
-    //         resp.on('end', () => {
-    //             parsedData = JSON.parse(data);
-    //             //console.log(parsedData.domain);
-    //             //console.log(parsedData.emails[0].value);
-    //             //check if the user is using a move4mobile google account
-    //             if (parsedData.domain == "move4mobile.com") {
-    //                 userRef.once('value', ((data) => {
-    //                     data.forEach((childData) => {
-    //                         if (childData.val().email == parsedData.emails[0].value) {
-    //                             assistant.data = { username: childData.val().display_name, userkey: childData.key };
+            // The whole response has been received. Print out the result.
+            resp.on('end', () => {
+                parsedData = JSON.parse(data);
+                console.log(parsedData.domain);
+                console.log(parsedData.emails[0].value);
+                //check if the user is using a move4mobile google account
+                if (parsedData.domain == "move4mobile.com") {
+                    userRef.once('value', ((data) => {
+                        data.forEach((childData) => {
+                            if (childData.val().email == parsedData.emails[0].value) {
+                                assistant.data = { username: childData.val().display_name, userkey: childData.key };
+                                admin.database().ref('users/' + childData.key).update({ access_token: accestoken });
+                                userData = childData;
+                                i = 1;
+                            }
+                        })
+                        if (i == 1) {
+                            //get the users current open orders and finish the welcome intent
+                            getUserOrder(assistant, userData);
+                        } else {
+                            speech = `<speak> I couldn't find an account for this email.</speak>`;
+                            assistant.tell(speech);
 
-    //                             userData = childData;
-    //                             i = 1;
-    //                         }
-    //                     })
-    //                     if (i == 1) {
-    //                         //get the users current open orders and finish the welcome intent
-    //                         getUserOrder(assistant, userData);
-    //                     } else {
-    //                         speech = `<speak> I couldn't find an account for this email.</speak>`;
-    //                         assistant.tell(speech);
+                            //TODO: Create the user account
 
-    //                         //TODO: Create the user account
-
-    //                     }
-    //                 }));
-    //             } else {
-    //                 speech = `<speak> This app is currently only available to Move4Mobile employees. </speak>`;
-    //                 assistant.tell(speech);
-    //             }
-    //         });
-
-    //     }).on("error", (err) => {
-    //         console.log("Error: " + err.message);
-    //     });
-    // }
-};
-
-exports.userSignUp = (request, assistant) => {
-    const userName = assistant.data.username;
-    if (userName != null) {
-        const speech = `<speak> You are already logged in, so it's not necessary to sign up again. </speak>`;
-        assistant.ask(speech);
-    } else {
-        let email = request.body.result.parameters['number'];
-        const userId = assistant.getUser().userId;
-
-        let speech = `<speak> You have entered an invalid code, please make sure you use the right code. </speak>`;
-        let i = 0;
-
-        console.log(email);
-        //add checks: if the userID is already in the database.
-        userRef.once('value', ((data) => {
-            data.forEach((childData) => {
-                if (childData.val().code == email) {
-                    admin.database().ref('users/' + childData.key).update({ uid: userId });
-                    assistant.data = { username: childData.val().display_name };
-                    getUserOrder(assistant, childData);
-                    i++;
+                        }
+                    }));
+                } else {
+                    speech = `<speak> Sorry, this app has an email domain restriction and does not allow external users. </speak>`;
+                    assistant.tell(speech);
                 }
-            })
-            if (i == 0) {
-                assistant.tell(speech);
-            }
+            });
 
-        }))
+        }).on("error", (err) => {
+            console.log("Error: " + err.message);
+        });
     }
-
-}
+};
 
 /*
 getOrderLocation
@@ -375,7 +317,6 @@ exports.quickOrder = (assistant) => {
     let amountContext = assistant.getArgument("number");
     let storeContext = assistant.getArgument("store");
     console.log("Change: " + changeContext + ", Snack: " + snackContext + ", Amount: " + amountContext + ", Store: " + storeContext);
-
     if (changeContext == "remove") {
         return assistant.ask(`<speak> You need to be in edit mode to remove an item, try saying edit, followed by your store of choice. </speak>`)
     }
@@ -730,6 +671,121 @@ exports.listTotalOrder = (assistant) => {
             assistant.ask(speech);
         }))
     }))
+};
+
+exports.learnMode = (assistant) => {
+
+    let snack = assistant.getArgument("snack");
+    let text = assistant.getArgument("any");
+    console.log("snack: " + snack);
+    console.log("text: " + text);
+
+    let currentSynonyms = [];
+    let speech = "hiiii";
+
+    //PUT entities
+    if (snack) {
+        text = assistant.data.text;
+        assistant.data = { snack: snack };
+    } else if (text) {
+        snack = assistant.data.snack;
+        assistant.data = { text: text };
+    }
+
+    if (snack && !text) {
+        speech = `<speak> Your pronunciation of ${snack} was correct. No need to add any synonyms for it.</speak>`;
+        assistant.ask(speech);
+    } else if (text && !snack) {
+        assistant.data = { text: text };
+        speech = `<speak> Unrecognized snack. Type the name of the snack if you want to add ${text} as a synonym for it.</speak>`;
+        assistant.ask(speech);
+    } else if (text && snack) {
+        //GET the entity and store the current synonyms. we need to add this again later so they don't get overwritten.
+        var https = require('https');
+        var options = {
+            hostname: 'api.api.ai',
+            path: '/v1/entities/5c3243d4-a29f-4779-a13e-ac91c2a9e728?v=20150910',
+            method: 'GET',
+            headers: { "Authorization": "Bearer d517f269ee6f4d01b6becd58bc070d85" }
+        };
+        var callback = function (data) {
+            console.log(data);
+            for (let i = 0, l = data.entries.length; i < l; i++) {
+                if (data.entries[i].value == snack) {
+                    console.log("snack: " + snack);
+                    for (let o = 0, l = data.entries[o].synonyms.length; o <= l; o++) {
+                        if (data.entries[i].synonyms[o] != null) {
+                            currentSynonyms.push(data.entries[i].synonyms[o]);
+                            console.log("synonyms: " + data.entries[i].synonyms[o]);
+                            console.log("current: " + currentSynonyms);
+                        }
+                    }
+                }
+            }
+            setSynonyms();
+        }
+        https.get(options, function (res) {
+            console.log("Got response: " + res.statusCode);
+            var body = '';
+            res.on('data', function (data) {
+                body += data;
+            });
+            res.on('end', function () {
+                var result = JSON.parse(body);
+                callback(result);
+            });
+        }).on('error', function (e) {
+            console.log("Got error: " + e.message);
+        });
+
+        function setSynonyms() {
+            //assistant.ask(speech);
+            var https = require('https');
+            var options = {
+                hostname: 'api.api.ai',
+                path: '/v1/entities/5c3243d4-a29f-4779-a13e-ac91c2a9e728/entries?v=20150910',
+                method: 'PUT',
+                headers: {
+                    "Authorization": "Bearer d517f269ee6f4d01b6becd58bc070d85",
+                    "Content-Type": "application/json; charset=utf-8"
+                }
+            };
+
+            var req = https.request(options, function (res) {
+                console.log('STATUS: ' + res.statusCode);
+                console.log('HEADERS: ' + JSON.stringify(res.headers));
+                res.setEncoding('utf8');
+                res.on('data', function (chunk) {
+                    console.log('BODY: ' + chunk);
+                });
+            });
+
+            req.on('error', function (e) {
+                console.log('problem with request: ' + e.message);
+            });
+            console.log("current:1 " + currentSynonyms);
+            currentSynonyms.push(text);
+            console.log("current:2 " + currentSynonyms);
+            let body = JSON.stringify(
+                [
+                    {
+                        "synonyms":
+                        currentSynonyms
+                        ,
+                        "value": snack,
+                    }
+                ]
+            )
+
+            // write data to request body
+            req.write(body);
+            req.end();
+
+            speech = `<speak> added your pronounciation: ${text} as a synonym for ${snack} </speak>`;
+            assistant.ask(speech);
+            assistant.data = { text: null };
+        }
+    }
 };
 
 /*

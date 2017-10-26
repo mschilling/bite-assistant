@@ -29,6 +29,7 @@ exports.Bite = functions.https.onRequest((request, response) => {
   actionMap.set('input.order', placeOrder);
   actionMap.set('input.admin', createBite);
   actionMap.set('input.lock', lockOrder);
+  actionMap.set('learnmode.learnmode-custom', learnMode);
   actionMap.set('input.listorder', listTotalOrder);
   actionMap.set('input.finish', finishOrder);
   actionMap.set('input.user.order', getUserOrder);
@@ -98,6 +99,10 @@ exports.Bite = functions.https.onRequest((request, response) => {
 
   function listTotalOrder(assistant) {
     biteFunctions.listTotalOrder(assistant);
+  }
+
+  function learnMode(assistant) {
+    biteFunctions.learnMode(assistant);
   }
 
 });

@@ -29,53 +29,68 @@ exports.biteUser = (assistant) => {
     let accestoken = assistant.getUser().accessToken;
     console.log("Access token: " + accestoken);
 
-    if (accestoken) {
-        const https = require('https');
-        https.get('https://www.googleapis.com/plus/v1/people/me?access_token=' + assistant.getUser().accessToken, (resp) => {
-            let data = '';
+    userRef.once('value', ((data) => {
+        data.forEach((childData) => {
+            if (childData.val().access_token == accestoken) {
+                assistant.data = { username: childData.val().display_name, userkey: childData.key };
+                userData = childData;
+                i = 1;
+            }
+        })
+        if (i == 1) {
+            //get the users current open orders and finish the welcome intent
+            getUserOrder(assistant, userData);
+        } else if (accestoken) {
+            const https = require('https');
+            https.get('https://www.googleapis.com/plus/v1/people/me?access_token=' + assistant.getUser().accessToken, (resp) => {
+                let jsondata = '';
 
-            // A chunk of data has been recieved.
-            resp.on('data', (chunk) => {
-                data += chunk;
-            });
+                // A chunk of data has been recieved.
+                resp.on('data', (chunk) => {
+                    jsondata += chunk;
+                });
 
-            // The whole response has been received. Print out the result.
-            resp.on('end', () => {
-                parsedData = JSON.parse(data);
-                console.log(parsedData.domain);
-                console.log(parsedData.emails[0].value);
-                //check if the user is using a move4mobile google account
-                if (parsedData.domain == "move4mobile.com") {
-                    userRef.once('value', ((data) => {
-                        data.forEach((childData) => {
-                            if (childData.val().email == parsedData.emails[0].value) {
-                                assistant.data = { username: childData.val().display_name, userkey: childData.key };
-                                admin.database().ref('users/' + childData.key).update({ access_token: accestoken });
-                                userData = childData;
-                                i = 1;
+                // The whole response has been received. Print out the result.
+                resp.on('end', () => {
+                    parsedData = JSON.parse(jsondata);
+                    console.log(parsedData);
+                    if (parsedData.domain){
+                        //check if the user is using a move4mobile google account
+                        if (parsedData.domain == "move4mobile.com") {
+                            data.forEach((childData) => {
+                                if (childData.val().email == parsedData.emails[0].value) {
+                                    assistant.data = { username: childData.val().display_name, userkey: childData.key };
+                                    admin.database().ref('users/' + childData.key).update({ access_token: accestoken });
+                                    userData = childData;
+                                    i = 1;
+                                }
+                            })
+                            if (i == 1) {
+                                //get the users current open orders and finish the welcome intent
+                                getUserOrder(assistant, userData);
+                            } else {
+                                speech = `<speak> I couldn't find an account for this email.</speak>`;
+                                assistant.tell(speech);
+
+                                //TODO: Create the user account
+
                             }
-                        })
-                        if (i == 1) {
-                            //get the users current open orders and finish the welcome intent
-                            getUserOrder(assistant, userData);
                         } else {
-                            speech = `<speak> I couldn't find an account for this email.</speak>`;
+                            speech = `<speak> Sorry, this app has an email domain restriction and does not allow external users. </speak>`;
                             assistant.tell(speech);
-
-                            //TODO: Create the user account
-
                         }
-                    }));
-                } else {
-                    speech = `<speak> Sorry, this app has an email domain restriction and does not allow external users. </speak>`;
-                    assistant.tell(speech);
-                }
-            });
+                    }else{
+                        speech = `<speak> Your account is no longer valid. Go to https://myaccount.google.com/permissions to revoke access to this app. It may take a few hours before you can use the app again. </speak>`;
+                        assistant.tell(speech);
+                    }
 
-        }).on("error", (err) => {
-            console.log("Error: " + err.message);
-        });
-    }
+                });
+
+            }).on("error", (err) => {
+                console.log("Error: " + err.message);
+            });
+        }
+    }));
 };
 
 /*
@@ -546,10 +561,11 @@ exports.lockOrder = (assistant) => {
 
                 if (ordercheck == 0) {
                     speech = `<speak> Sorry, I couldn't lock your order. You can try for a different store.  </speak>`;
+                    assistant.ask(speech);
                 } else {
-                    speech = `<speak> Your order has been locked! Anything else you want to do?</speak>`;
+                    speech = `<speak> Your order has been locked! Thanks for ordering with Bite!</speak>`;
+                    assistant.tell(speech);
                 }
-                assistant.ask(speech);
             }))
         }))
     }))
@@ -857,9 +873,9 @@ function getUserOrder(assistant, user) {
                     }
                     assistant.data = { username: user.val().display_name, userkey: user.key };
                     if (o == 0) {
-                        speech = `<speak> Welcome ${user.val().display_name}! No Bites have recently been opened, do you want to start one?</speak>`;
+                        speech = `<speak> Welcome ${user.val().display_name}! No Bites have recently been opened, you can use the create command to start a new Bite or say start to order from older Bites. </speak>`;
                     } else {
-                        speech = `<speak> Welcome ${user.val().display_name}!` + message + ` do you want to place an order?.</speak>`;
+                        speech = `<speak> Welcome ${user.val().display_name}!` + message + ` do you want to place an order here?.</speak>`;
                     }
 
                     assistant.ask(speech);

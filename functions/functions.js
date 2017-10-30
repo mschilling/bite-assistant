@@ -54,7 +54,7 @@ exports.biteUser = (assistant) => {
                 resp.on('end', () => {
                     parsedData = JSON.parse(jsondata);
                     console.log(parsedData);
-                    if (parsedData.domain){
+                    if (parsedData.domain) {
                         //check if the user is using a move4mobile google account
                         if (parsedData.domain == "move4mobile.com") {
                             data.forEach((childData) => {
@@ -79,7 +79,7 @@ exports.biteUser = (assistant) => {
                             speech = `<speak> Sorry, this app has an email domain restriction and does not allow external users. </speak>`;
                             assistant.tell(speech);
                         }
-                    }else{
+                    } else {
                         speech = `<speak> Your account is no longer valid. Go to https://myaccount.google.com/permissions to revoke access to this app. It may take a few hours before you can use the app again. </speak>`;
                         assistant.tell(speech);
                     }
@@ -288,10 +288,10 @@ exports.getUserOrderItems = (assistant) => {
                     if (contextString == "" && changeContext) {
                         speech = `<speak> The items you want aren't available, try adding something else or change stores. </speak>`;
                     } else {
-                        speech = `<speak> ${contextString} ${updateString}
-                        Your order contains: ${updateString1} ${orderString} with a total price of
-                        <say-as interpret-as="currency">EUR${productPrice / 100}</say-as>. ${message}
-                        </speak>`;
+                        speech = `<speak> ${contextString} ${updateString}` +
+                            `Your order contains: ${updateString1} ${orderString} with a total price of` +
+                            `<say-as interpret-as="currency">EUR${productPrice / 100}</say-as>. ${message}` +
+                            `</speak>`;
                     }
                     assistant.ask(speech);
                 } else {
@@ -429,11 +429,11 @@ exports.quickOrder = (assistant) => {
                         if (check != 0) {
                             assistant.data = { userStore: storeContext, userOrders: assistant.data.userOrders };
                             assistant.setContext("edit_order", 2);
-                            speech = `<speak> Added ${updateString}
-                             Your order contains: ${updateString1} ${orderString} with a total price of
-                             <say-as interpret-as="currency">EUR${productPrice / 100}</say-as>. 
-                             You can add and remove items from your order, or lock it when you're done.
-                         </speak>`;
+                            speech = `<speak>  Added ${updateString}` +
+                                `Your order contains: ${updateString1} ${orderString} with a total price of` +
+                                `<say-as interpret-as="currency">EUR${productPrice / 100}</say-as>.` +
+                                `You can add and remove items from your order, or lock it when you're done.` +
+                                `</speak>`;
                         }
                         assistant.ask(speech);
                     }))

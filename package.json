@@ -1,0 +1,26 @@
+{
+  "name": "bite-assistant",
+  "version": "0.0.1",
+  "description": "Google Assistant app for Bite",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mschilling/bite-assistant.git"
+  },
+  "keywords": [
+    "bite"
+  ],
+  "author": "Move4Mobile",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/mschilling/bite-assistant/issues"
+  },
+  "homepage": "https://github.com/mschilling/bite-assistant#readme",
+  "devDependencies": {
+    "eslint": "^4.7.2",
+    "eslint-config-google": "^0.9.1"
+  }
+}

@@ -5,7 +5,7 @@ process.env.DEBUG = 'actions-on-google:*';
 const Assistant = require('actions-on-google').ApiAiAssistant;
 const functions = require('firebase-functions');
 
-//database stuff
+//firebase database refs
 const admin = require('firebase-admin');
 admin.initializeApp(functions.config().firebase);
 const orderRef = admin.database().ref('orders');
@@ -14,13 +14,23 @@ const userRef = admin.database().ref('users');
 const userOrderRef = admin.database().ref('user_order');
 const userOrderLockedRef = admin.database().ref('user_order_locked');
 
+//FIRESTORE
+var db = admin.firestore();
+
+//cloud firestore refs
+const FS_Orders = db.collection('orders');
+const FS_Stores = db.collection('restaurants');
+const FS_Users = db.collection('users');
+
+//Moment.js
+var moment = require('moment');
+moment().format();
+
 /*
 Login
 */
 exports.biteUser = (assistant) => {
-
     //OAUTH SIGNIN 
-
     let parsedData; //stores the parsed json 
     let userData; // stores the user data when the email matches in the db
     let speech = "";
@@ -29,68 +39,68 @@ exports.biteUser = (assistant) => {
     let accestoken = assistant.getUser().accessToken;
     console.log("Access token: " + accestoken);
 
-    userRef.once('value', ((data) => {
-        data.forEach((childData) => {
-            if (childData.val().access_token == accestoken) {
-                assistant.data = { username: childData.val().display_name, userkey: childData.key };
-                userData = childData;
+    let query = FS_Users.where('access_token', '==', accestoken).get()
+        .then(snapshot => {
+            snapshot.forEach(doc => {
+                console.log(doc.id, '=>', doc.data());
+                assistant.data = { username: doc.data().display_name, userkey: doc.id };
+                userData = doc;
                 i = 1;
-            }
-        })
-        if (i == 1) {
-            //get the users current open orders and finish the welcome intent
-            getUserOrder(assistant, userData);
-        } else if (accestoken) {
-            const https = require('https');
-            https.get('https://www.googleapis.com/plus/v1/people/me?access_token=' + assistant.getUser().accessToken, (resp) => {
-                let jsondata = '';
+            });
+            if (i == 1) {
+                //get the users current open orders and finish the welcome intent
+                getUserOrder(assistant, userData);
+            } else if (accestoken) {
+                const https = require('https');
+                https.get('https://www.googleapis.com/plus/v1/people/me?access_token=' + accestoken, (resp) => {
+                    let jsondata = '';
 
-                // A chunk of data has been recieved.
-                resp.on('data', (chunk) => {
-                    jsondata += chunk;
-                });
+                    // A chunk of data has been recieved.
+                    resp.on('data', (chunk) => {
+                        jsondata += chunk;
+                    });
 
-                // The whole response has been received. Print out the result.
-                resp.on('end', () => {
-                    parsedData = JSON.parse(jsondata);
-                    console.log(parsedData);
-                    if (parsedData.domain) {
-                        //check if the user is using a move4mobile google account
-                        if (parsedData.domain == "move4mobile.com") {
-                            data.forEach((childData) => {
-                                if (childData.val().email == parsedData.emails[0].value) {
-                                    assistant.data = { username: childData.val().display_name, userkey: childData.key };
-                                    admin.database().ref('users/' + childData.key).update({ access_token: accestoken });
-                                    userData = childData;
-                                    i = 1;
-                                }
-                            })
-                            if (i == 1) {
-                                //get the users current open orders and finish the welcome intent
-                                getUserOrder(assistant, userData);
+                    // The whole response has been received. Print out the result.
+                    resp.on('end', () => {
+                        parsedData = JSON.parse(jsondata);
+                        console.log(parsedData);
+                        if (parsedData.emails) {
+                            //check if the user is using a move4mobile google account
+                            if (parsedData.domain == "move4mobile.com" || parsedData.emails[0].value == "biteexample@gmail.com") {
+                                let emailQuery = FS_Users.where('email', '==', parsedData.emails[0].value).get()
+                                    .then(snapshot => {
+                                        snapshot.forEach(doc => {
+                                            console.log(doc.id, '=>', doc.data());
+                                            assistant.data = { username: doc.data().display_name, userkey: doc.id };
+                                            userData = doc;
+                                            db.collection('users').doc(doc.id).update({ access_token: accestoken });
+                                            i = 1;
+                                        });
+                                        if (i == 1) {
+                                            //get the users current open orders and finish the welcome intent
+                                            getUserOrder(assistant, userData);
+                                        } else {
+                                            speech = `<speak> I couldn't find an account for this email.</speak>`;
+                                            assistant.tell(speech);
+                                            //TODO: Create the user account
+                                        }
+                                    })
                             } else {
-                                speech = `<speak> I couldn't find an account for this email.</speak>`;
+                                speech = `<speak> Sorry, this app has an email domain restriction and does not allow external users. </speak>`;
                                 assistant.tell(speech);
-
-                                //TODO: Create the user account
-
                             }
                         } else {
-                            speech = `<speak> Sorry, this app has an email domain restriction and does not allow external users. </speak>`;
+                            speech = `<speak> Something went wrong. If this problem persists, visit https://myaccount.google.com/permissions to revoke access to this app. It may take up to a few hours for the changes to take effect. </speak>`;
                             assistant.tell(speech);
                         }
-                    } else {
-                        speech = `<speak> Your account is no longer valid. Go to https://myaccount.google.com/permissions to revoke access to this app. It may take a few hours before you can use the app again. </speak>`;
-                        assistant.tell(speech);
-                    }
-
+                    });
+                }).on("error", (err) => {
+                    console.log("Error: " + err.message);
                 });
-
-            }).on("error", (err) => {
-                console.log("Error: " + err.message);
-            });
-        }
-    }));
+            }
+        }).catch(err => {
+            console.log('Error getting documents', err);
+        });
 };
 
 /*
@@ -812,86 +822,67 @@ example: [ 'user_order/-KorC-i_WY5CsFct9ncd/3fKhikTWsWAd2ZyU2UybQrvU2fz2' ] supp
               TABLE  /     (OPEN)BITE     /            USER               / ORDERS
 */
 function getUserOrder(assistant, user) {
-    let check = 0;
-    let itemArray = [];
-    let storeArray = [];
-    let store;
-    let storeString = "";
-    let i = 0;
-    let o = 0;
+
+    let userKey = assistant.data.userkey;
+
     let message = " A Bite just Opened at ";
     let speech;
-    orderRef.once('value', ((orderData) => {
-        userOrderRef.once('value', ((userOrderData) => {
-            storeRef.once('value', ((storeData) => {
 
-                //foreach open Bite
-                orderData.forEach((orderChild) => {
-                    function isInToday(inputDate) {
-                        var today = new Date();
-                        var date = new Date(inputDate);
-                        if (today.setHours(0, 0, 0, 0) == date.setHours(0, 0, 0, 0)) { return true; }
-                        else { return false; }
-                    }
-                    if (isInToday(orderChild.val().open_time)) {
-                        storeData.forEach((childData) => {
-                            if (orderChild.val().store == childData.key) {
-                                message += childData.val().name + ", ";
-                                o = 1;
-                            }
-                        })
-                    }
-                    //check if the Bite in the user_order table is open
-                    userOrderData.forEach((childData) => {
+    let todayHasBite = false;
+    let amountOfOrders = 0;
+    let stores = [];
+    let storeNames = [];
 
-                        if (orderChild.key == childData.key) {
-                            //check user ids
-                            userOrderData.child(childData.key).forEach(function (userOrderData) {
-                                if (user.key == userOrderData.key) {
-                                    check++; //+1 order
-                                    storeArray.push(orderChild.val().store);
-                                    store = orderChild.val().store;
-                                    itemArray.push(store + '_user_order/' + childData.key + "/" + userOrderData.key);
-                                }
-                            })
+    //Get all open orders, check if the user has an order there.
+    let getOpenOrders = FS_Orders.where('status', '==', 'open').get()
+        .then(snapshot => {
+            snapshot.forEach(doc => {
+                if (moment().isSame(moment(doc.data().open_time), 'day')) {
+                    todayHasBite = true
+                    message += doc.data().storename + ", ";
+                }
+                storeNames.push(doc.data().storename);
+                stores.push(doc.id);
+            });
+        }).then(snapshot => {
+            let amount = 0;
+            for (let i = 0; i < stores.length; i++) {
+                FS_Orders.doc(stores[i]).collection('orders').doc(userKey).get()
+                    .then(doc => {
+                        if (!doc.exists) {
+                            storeNames.splice(i); //remove the name of the store where the user has no orders
+                        } else {
+                            amountOfOrders++; //+1 order
+                        }
+                        amount++;
+                        if (amount === stores.length) {
+                            response();
                         }
                     })
-                    //get the store id
-                    if (i < check) {
-                        storeData.forEach((childData) => {
-                            if (store == childData.key) {
-                                storeString += childData.val().name + ", ";
-                                i++
-                            }
-                        })
-                    }
-                })
-                if (check == 0) {
-                    assistant.setContext("user_order", 5);
-                    if (user.val().admin) {
-                        assistant.setContext("admin", 10);
-                    }
-                    assistant.data = { username: user.val().display_name, userkey: user.key };
-                    if (o == 0) {
-                        speech = `<speak> Welcome ${user.val().display_name}! No Bites have recently been opened, you can use the create command to start a new Bite or say start to order from older Bites. </speak>`;
-                    } else {
-                        speech = `<speak> Welcome ${user.val().display_name}!` + message + ` do you want to place an order here?.</speak>`;
-                    }
+            }
+        })
 
-                    assistant.ask(speech);
-                } else {
-                    assistant.setContext("user_order", 2);
-                    assistant.setContext("edit_order", 2);
-                    if (user.val().admin) {
-                        assistant.setContext("admin", 10);
-                    }
-                    assistant.data = { username: user.val().display_name, userOrders: itemArray, userStore: storeArray, userkey: user.key };
+    function response() {
+        if (user.data().admin) {
+            assistant.setContext("admin", 10);
+        }
+        if (amountOfOrders == 0) {
+            assistant.setContext("user_order", 5);
+            assistant.data = { username: user.data().display_name, userkey: user.key };
+            if (!todayHasBite) {
+                speech = `<speak> Welcome ${user.data().display_name}! No Bites have recently been opened, you can use the create command to start a new Bite or say start to order from older Bites. </speak>`;
+            } else {
+                speech = `<speak> Welcome ${user.data().display_name}!` + message + ` do you want to place an order here?.</speak>`;
+            }
+            assistant.ask(speech);
+        } else {
+            assistant.setContext("user_order", 2);
+            assistant.setContext("edit_order", 2);
+            assistant.data = { username: user.data().display_name, userkey: user.key };
 
-                    const speech = `<speak> Welcome ${user.val().display_name}! You have ${check} open order(s) at ${storeString}<break time="1"/>` +
-                        `Would you like to edit a current order or start another?</speak>`;
-                    assistant.ask(speech);
-                }
-            }))
-        }))
-    }))
+            const speech = `<speak> Welcome ${user.data().display_name}! You have ${amountOfOrders} open order(s) at ${storeNames.toString()}.<break time="1"/>` +
+                `Would you like to edit a current order or start another?</speak>`;
+            assistant.ask(speech);
+        }
+    }
 };

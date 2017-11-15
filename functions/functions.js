@@ -323,18 +323,11 @@ exports.getUserOrderItems = (assistant) => {
 
 exports.quickOrder = (assistant) => {
 
-    let store;
-    let location;
-    let check = 0;
-    let productcheck = 0;
-
-    let i = 0;
-    let speech = "";
-
-    let orderString = "";
-    let updateString = "";
-    let updateString1 = "";
-    let productPrice = 0;
+    let snackCount = 0;
+    let snackString = "";
+    let userKey = assistant.data.userkey;
+    let storename;
+    let id;
 
     //get the arguments from the user query
     const changeContext = assistant.getArgument("action");
@@ -346,114 +339,189 @@ exports.quickOrder = (assistant) => {
         return assistant.ask(`<speak> You need to be in edit mode to remove an item, try saying edit, followed by your store of choice. </speak>`)
     }
 
-    let userKey;
-
-    //get the database link and order store
-    let dbref = "" + assistant.data.userOrders;
-    let Store = assistant.data.userStore;
-    let userKeyData = assistant.data.userkey;
-
-    let productRef;
-    let userOrderRef;
-
-    orderRef.once('value', ((orderData) => {
-        userRef.once('value', ((data) => {
-            data.forEach((childData) => {
-                if (userKeyData == childData.key) {
-                    userKey = childData.key;//save user data
-                }
+    //get the right open bite
+    let getOpenOrders = FS_Orders.where('status', '==', 'open').where('store', '==', parseInt(storeContext)).get()
+        .then(snapshot => {
+            //should only ever return 1 store
+            snapshot.forEach(doc => {
+                storename = doc.data().storename;
+                id = doc.id;
             })
-            //get the open order
-            orderData.forEach((childData) => {
-                if (storeContext == childData.val().store) {
-                    if (childData.val().status == "closed") {
-                        return assistant.ask(`<speak> Sorry, this Bite is already closed, try to be faster next time. </speak>`)
-                    } else {
-                        location = childData.val().location;
-                        productRef = admin.database().ref('products/' + childData.val().store);
-                        dbref = 'user_order/' + childData.key + "/" + userKey;
-                        userOrderRef = admin.database().ref('user_order/' + childData.key + "/" + userKey);
-                    }
-
-                } else {
-                    speech = `<speak> Looks like there aren't any open Bites for your store, you can try starting one! </speak>`;
-                    //assistant.ask(speech);
-                }
-            });
-            if (productRef) {
-                productRef.once('value', ((productdata) => {
-                    userOrderRef.once('value', ((userItemData) => {
-
-                        //foreach product in the store the user is ordering from
-                        productdata.forEach((productChild) => {
-
-                            //go to the products, an extra step since the database has a 2nd child element called products for some reason..
-                            productdata.child(productChild.key).forEach(function (userOrderData) {
-
-                                productcheck = 0;
-
-                                //lets the user add multiple items in 1 sentence
-                                if (snackContext != null) {
-
-                                    snackContext.forEach(function (entry) {
-
-                                        if (userOrderData.val().name == entry) {
-                                            check = 1;
-                                            productcheck = 1;
-                                            //if amount is undefined set to 1
-                                            if (amountContext[i]) {
-                                            } else {
-                                                amountContext[i] = 1;
-                                            }
-
-                                            updateString += `<say-as interpret-as="cardinal">${amountContext[i]}</say-as> ${userOrderData.val().name}, `;
-
-                                            let realAmount = amountContext[i];
-
-                                            //check if the item is already in the order, if true, add the new amount + the current amount
-                                            userItemData.forEach((itemChild) => {
-                                                if (itemChild.key == userOrderData.key) {
-                                                    realAmount = parseInt(amountContext[i]) + parseInt(itemChild.val().amount);
+            return id;
+        }).then(snapshot => {
+            //check if the user already has an order at this bite
+            let getUserOrders = FS_Orders.doc(snapshot).collection('orders').doc(userKey).get()
+                .then(doc => {
+                    snackContext.forEach(entry => {
+                        //if amount is undefined set to 1
+                        if (amountContext[snackCount]) {
+                        } else {
+                            amountContext[snackCount] = 1;
+                        }
+                        let getProducts = FS_Stores.doc(storeContext.toString()).collection('products').where('name', '==', entry).limit(1).get()
+                            .then(object => {
+                                object.forEach(item => {
+                                    if (!doc.exists) {
+                                        FS_Orders.doc(id).collection('orders').doc(userKey).collection('snacks').doc(item.id).set({
+                                            amount: amountContext[snackContext.indexOf(entry)],
+                                            name: item.data().name,
+                                            price: (item.data().price * amountContext[snackContext.indexOf(entry)])
+                                        });
+                                        snackString += `<say-as interpret-as="cardinal">${amountContext[snackContext.indexOf(entry)]}</say-as> ${item.data().name}, `;
+                                        snackCount++;
+                                        if (snackCount == snackContext.length) {
+                                            return response();
+                                        }
+                                    } else {
+                                        //check if the item is already in the user's order
+                                        console.log("index: " + snackContext.indexOf(entry) + " AMOUNT: " + amountContext[snackContext.indexOf(entry)] + " name: " + item.data().name);
+                                        FS_Orders.doc(id).collection('orders').doc(userKey).collection('snacks').doc(item.id)
+                                            .get()
+                                            .then(currentItem => {
+                                                if (!currentItem.exists) {
+                                                    FS_Orders.doc(id).collection('orders').doc(userKey).collection('snacks').doc(item.id).set({
+                                                        amount: amountContext[snackContext.indexOf(entry)],
+                                                        name: item.data().name,
+                                                        price: (item.data().price * amountContext[snackContext.indexOf(entry)])
+                                                    });
+                                                    snackString += `<say-as interpret-as="cardinal">${amountContext[snackContext.indexOf(entry)]}</say-as> ${item.data().name}, `;
+                                                } else {
+                                                    FS_Orders.doc(id).collection('orders').doc(userKey).collection('snacks').doc(item.id).update({
+                                                        amount: (amountContext[snackContext.indexOf(entry)] + currentItem.data().amount),
+                                                        name: item.data().name,
+                                                        price: (item.data().price * (amountContext[snackContext.indexOf(entry)] + currentItem.data().amount))
+                                                    });
+                                                    snackString += `<say-as interpret-as="cardinal">${amountContext[snackContext.indexOf(entry)]}</say-as> ${item.data().name}, `;
+                                                }
+                                                snackCount++;
+                                                if (snackCount == snackContext.length) {
+                                                    return response();
                                                 }
                                             })
-
-                                            //update the database with the new item
-                                            admin.database().ref(dbref).child(userOrderData.key).update({ amount: realAmount });
-                                            updateString1 += `<say-as interpret-as="cardinal">${realAmount}</say-as> ${userOrderData.val().name}, `;
-                                            productPrice += (parseInt(userOrderData.val().price) * realAmount);
-                                            i++;
-                                        }
-                                    })
-                                }
-                                //if check != 0 then that item was updated and thus already added to orderstring in the above part
-                                if (productcheck == 0) {
-                                    userItemData.forEach((itemChild) => {
-                                        if (itemChild.key == userOrderData.key) {
-                                            orderString += `<say-as interpret-as="cardinal">${itemChild.val().amount}</say-as> ${userOrderData.val().name}, `;
-                                            productPrice += (parseInt(userOrderData.val().price) * itemChild.val().amount);
-                                        }
-                                    })
-                                }
+                                    }
+                                })
                             })
-                        })
-                        if (check != 0) {
-                            assistant.data = { userStore: storeContext, userOrders: assistant.data.userOrders };
-                            assistant.setContext("edit_order", 2);
-                            speech = `<speak>  Added ${updateString}` +
-                                `Your order contains: ${updateString1} ${orderString} with a total price of` +
-                                `<say-as interpret-as="currency">EUR${productPrice / 100}</say-as>.` +
-                                `You can add and remove items from your order, or lock it when you're done.` +
-                                `</speak>`;
-                        }
-                        assistant.ask(speech);
-                    }))
-                }))
-            } else {
-                speech = `<speak> There aren't any open Bites for this store, try ordering from somewhere else. </speak>`;
-                assistant.ask(speech);
-            }
-        }))
-    }));
+                    })
+                    return doc;
+                })
+        })
+    function response() {
+        //save the store for easy switching to edit mode
+        assistant.data = { userStore: storeContext, userOrders: assistant.data.userOrders };
+        //allow editing of the order
+        assistant.setContext("edit_order", 2);
+        let speech = `<speak> Added ${snackString} you can add and remove items by saying "Edit", or lock the order when you're done.</speak>`;
+        assistant.ask(speech);
+    }
+
+
+
+    // //get the database link and order store
+    // let dbref = "" + assistant.data.userOrders;
+    // let Store = assistant.data.userStore;
+    // let userKeyData = assistant.data.userkey;
+
+    // let productRef;
+    // let userOrderRef;
+
+    // orderRef.once('value', ((orderData) => {
+    //     userRef.once('value', ((data) => {
+    //         data.forEach((childData) => {
+    //             if (userKeyData == childData.key) {
+    //                 userKey = childData.key;//save user data
+    //             }
+    //         })
+    //         //get the open order
+    //         orderData.forEach((childData) => {
+    //             if (storeContext == childData.val().store) {
+    //                 if (childData.val().status == "closed") {
+    //                     return assistant.ask(`<speak> Sorry, this Bite is already closed, try to be faster next time. </speak>`)
+    //                 } else {
+    //                     location = childData.val().location;
+    //                     productRef = admin.database().ref('products/' + childData.val().store);
+    //                     dbref = 'user_order/' + childData.key + "/" + userKey;
+    //                     userOrderRef = admin.database().ref('user_order/' + childData.key + "/" + userKey);
+    //                 }
+
+    //             } else {
+    //                 speech = `<speak> Looks like there aren't any open Bites for your store, you can try starting one! </speak>`;
+    //                 //assistant.ask(speech);
+    //             }
+    //         });
+    //         if (productRef) {
+    //             productRef.once('value', ((productdata) => {
+    //                 userOrderRef.once('value', ((userItemData) => {
+
+    //                     //foreach product in the store the user is ordering from
+    //                     productdata.forEach((productChild) => {
+
+    //                         //go to the products, an extra step since the database has a 2nd child element called products for some reason..
+    //                         productdata.child(productChild.key).forEach(function (userOrderData) {
+
+    //                             productcheck = 0;
+
+    //                             //lets the user add multiple items in 1 sentence
+    //                             if (snackContext != null) {
+
+    //                                 snackContext.forEach(function (entry) {
+
+    //                                     if (userOrderData.val().name == entry) {
+    //                                         check = 1;
+    //                                         productcheck = 1;
+    //                                         //if amount is undefined set to 1
+    //                                         if (amountContext[i]) {
+    //                                         } else {
+    //                                             amountContext[i] = 1;
+    //                                         }
+
+    //                                         updateString += `<say-as interpret-as="cardinal">${amountContext[i]}</say-as> ${userOrderData.val().name}, `;
+
+    //                                         let realAmount = amountContext[i];
+
+    //                                         //check if the item is already in the order, if true, add the new amount + the current amount
+    //                                         userItemData.forEach((itemChild) => {
+    //                                             if (itemChild.key == userOrderData.key) {
+    //                                                 realAmount = parseInt(amountContext[i]) + parseInt(itemChild.val().amount);
+    //                                             }
+    //                                         })
+
+    //                                         //update the database with the new item
+    //                                         admin.database().ref(dbref).child(userOrderData.key).update({ amount: realAmount });
+    //                                         updateString1 += `<say-as interpret-as="cardinal">${realAmount}</say-as> ${userOrderData.val().name}, `;
+    //                                         productPrice += (parseInt(userOrderData.val().price) * realAmount);
+    //                                         i++;
+    //                                     }
+    //                                 })
+    //                             }
+    //                             //if check != 0 then that item was updated and thus already added to orderstring in the above part
+    //                             if (productcheck == 0) {
+    //                                 userItemData.forEach((itemChild) => {
+    //                                     if (itemChild.key == userOrderData.key) {
+    //                                         orderString += `<say-as interpret-as="cardinal">${itemChild.val().amount}</say-as> ${userOrderData.val().name}, `;
+    //                                         productPrice += (parseInt(userOrderData.val().price) * itemChild.val().amount);
+    //                                     }
+    //                                 })
+    //                             }
+    //                         })
+    //                     })
+    //                     if (check != 0) {
+    //                         assistant.data = { userStore: storeContext, userOrders: assistant.data.userOrders };
+    //                         assistant.setContext("edit_order", 2);
+    //                         speech = `<speak>  Added ${updateString}` +
+    //                             `Your order contains: ${updateString1} ${orderString} with a total price of` +
+    //                             `<say-as interpret-as="currency">EUR${productPrice / 100}</say-as>.` +
+    //                             `You can add and remove items from your order, or lock it when you're done.` +
+    //                             `</speak>`;
+    //                     }
+    //                     assistant.ask(speech);
+    //                 }))
+    //             }))
+    //         } else {
+    //             speech = `<speak> There aren't any open Bites for this store, try ordering from somewhere else. </speak>`;
+    //             assistant.ask(speech);
+    //         }
+    //     }))
+    // }));
 };
 
 //Create/Delete a Bite
@@ -640,12 +708,10 @@ exports.finishOrder = (assistant) => {
 };
 
 exports.listTotalOrder = (assistant) => {
-    //get the store that was saved during finishOrder();
-    const storeContext = assistant.data.userStore;
 
-    //get the userID
-    let userkey = assistant.data.userkey;
-    let savedOrder = assistant.data.saveOrder;
+    const storeContext = assistant.data.userStore; //get the store that was saved during finishOrder();
+    let userkey = assistant.data.userkey; //get the userID
+    let savedOrder = assistant.data.saveOrder; //get the orders key
 
     let nameArray = [];
     let amountArray = [];
@@ -653,6 +719,13 @@ exports.listTotalOrder = (assistant) => {
     let orderString = "";
     let orderprice = 0;
     let speech;
+
+    // let FS_orderRef = FS_Orders.doc(savedOrder).where('status', '==', 'open').get()
+    //     .then(snapshot => {
+    //         snapshot.forEach(doc => {
+
+    //         })
+    //     })
 
     const userOrderRefUser = admin.database().ref('user_order/' + savedOrder);
     const productRef = admin.database().ref('products/' + storeContext);
@@ -796,7 +869,7 @@ exports.learnMode = (assistant) => {
                 [
                     {
                         "synonyms":
-                        currentSynonyms
+                            currentSynonyms
                         ,
                         "value": snack,
                     }
@@ -868,7 +941,7 @@ function getUserOrder(assistant, user) {
         }
         if (amountOfOrders == 0) {
             assistant.setContext("user_order", 5);
-            assistant.data = { username: user.data().display_name, userkey: user.key };
+            assistant.data = { username: user.data().display_name, userkey: userKey };
             if (!todayHasBite) {
                 speech = `<speak> Welcome ${user.data().display_name}! No Bites have recently been opened, you can use the create command to start a new Bite or say start to order from older Bites. </speak>`;
             } else {
@@ -878,7 +951,7 @@ function getUserOrder(assistant, user) {
         } else {
             assistant.setContext("user_order", 2);
             assistant.setContext("edit_order", 2);
-            assistant.data = { username: user.data().display_name, userkey: user.key };
+            assistant.data = { username: user.data().display_name, userkey: userKey };
 
             const speech = `<speak> Welcome ${user.data().display_name}! You have ${amountOfOrders} open order(s) at ${storeNames.toString()}.<break time="1"/>` +
                 `Would you like to edit a current order or start another?</speak>`;

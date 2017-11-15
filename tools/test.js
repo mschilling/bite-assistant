@@ -10,7 +10,7 @@ const serviceAccount = require('./service-account.json');
 
 admin.initializeApp({
     credential: admin.credential.cert(serviceAccount),
-    databaseURL: 'https://bite-4ce99.firebaseio.com'
+    databaseURL: 'https://m4m-bite.firebaseio.com'
 });
 
 const api = require('../functions/helpers/api');

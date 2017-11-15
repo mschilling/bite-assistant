@@ -1,7 +1,6 @@
 {
   "projects": {
-    "default": "bite-4ce99",
-    "develop": "bite-4ce99",
+    "default": "m4m-bite",
     "prod": "m4m-bite"
   }
 }

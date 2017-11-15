@@ -21,6 +21,11 @@ class BiteApi {
     return ApiUsers.getUser(userId);
   }
 
+  static getUserAuth(accestoken) {
+    debug('getUserAuth ' + accestoken);
+    return ApiUsers.getUserAuth(accestoken);
+  }
+
   static getOpenOrders() {
     debug('getOpenOrders');
     return ApiOrders.getOpenOrders();

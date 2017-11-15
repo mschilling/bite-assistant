@@ -54,9 +54,9 @@ exports.biteUser = (assistant) => {
                 resp.on('end', () => {
                     parsedData = JSON.parse(jsondata);
                     console.log(parsedData);
-                    if (parsedData.domain){
+                    if (parsedData.emails) {
                         //check if the user is using a move4mobile google account
-                        if (parsedData.domain == "move4mobile.com") {
+                        if (parsedData.domain == "move4mobile.com" || parsedData.emails[0].value == "biteexample@gmail.com") {
                             data.forEach((childData) => {
                                 if (childData.val().email == parsedData.emails[0].value) {
                                     assistant.data = { username: childData.val().display_name, userkey: childData.key };
@@ -79,7 +79,7 @@ exports.biteUser = (assistant) => {
                             speech = `<speak> Sorry, this app has an email domain restriction and does not allow external users. </speak>`;
                             assistant.tell(speech);
                         }
-                    }else{
+                    } else {
                         speech = `<speak> Your account is no longer valid. Go to https://myaccount.google.com/permissions to revoke access to this app. It may take a few hours before you can use the app again. </speak>`;
                         assistant.tell(speech);
                     }
@@ -126,9 +126,8 @@ exports.biteLocation = (assistant) => {
             if (i != 0) {
                 orderStore = `<break time="1"/>, you can order from ${store} or open a Bite yourself`;
                 assistant.setContext("user_order", 2);
-                assistant.setContext("edit_order", 2);
             } else {
-                orderStore = `<break time="1"/>. You can try ordering from another location, or start a Bite here yourself! `;
+                orderStore = `<break time="1"/>. You can try ordering from another location, or start a Bite here yourself by saying "create"! `;
             }
 
             const speech = `<speak> there are currently ${i} open bites in ${locationContext}` + orderStore + `</speak>`;
@@ -284,25 +283,23 @@ exports.getUserOrderItems = (assistant) => {
                 //productCheck = 0 means there are no items in the order, prodcutprice = 0 means there are no products with a price
                 if (productCheck != 0 && productPrice != 0) {
                     assistant.setContext("user_order", 2);
-                    assistant.setContext("edit_order", 2);
                     if (contextString == "" && changeContext) {
                         speech = `<speak> The items you want aren't available, try adding something else or change stores. </speak>`;
                     } else {
-                        speech = `<speak> ${contextString} ${updateString}
-                        Your order contains: ${updateString1} ${orderString} with a total price of
-                        <say-as interpret-as="currency">EUR${productPrice / 100}</say-as>. ${message}
-                        </speak>`;
+                        assistant.setContext("edit_order", 2);
+                        speech = `<speak> ${contextString} ${updateString}` +
+                            `Your order contains: ${updateString1} ${orderString} with a total price of` +
+                            `<say-as interpret-as="currency">EUR${productPrice / 100}</say-as>. ${message}` +
+                            `</speak>`;
                     }
                     assistant.ask(speech);
                 } else {
-                    //EXIT: when no items can be found while already in editing mode
-                    //in the rare occasion the user removes all his items with the bite app while editing in bite assistant.
-                    //OR when the user tries editing in a store where he has no orders
+                    //when the user removes all items from the order
                     if (Store) {
-                        const speech = `<speak>Oops, I couldn't find any items in your order, try starting over. </speak>`;
+                        const speech = `<speak> ${contextString} ${updateString} You have no items left in your order, do you want to add some?  </speak>`;
                         assistant.ask(speech);
                     } else {
-                        const speech = `<speak> Please say edit and the store you want to order from to do this. </speak>`;
+                        const speech = `<speak> Please say edit and the store you want to edit your order at. </speak>`;
                         assistant.ask(speech);
                     }
                 }
@@ -333,7 +330,11 @@ exports.quickOrder = (assistant) => {
     let storeContext = assistant.getArgument("store");
     console.log("Change: " + changeContext + ", Snack: " + snackContext + ", Amount: " + amountContext + ", Store: " + storeContext);
     if (changeContext == "remove") {
-        return assistant.ask(`<speak> You need to be in edit mode to remove an item, try saying edit, followed by your store of choice. </speak>`)
+        speech = `<speak> You need to be in edit mode to remove an item, try saying edit, followed by your store of choice. </speak>`;
+        return assistant.ask(assistant.buildRichResponse()
+            .addSimpleResponse({ speech })
+            .addSuggestions(['Edit order', 'Never mind'])
+        );
     }
 
     let userKey;
@@ -357,16 +358,15 @@ exports.quickOrder = (assistant) => {
             orderData.forEach((childData) => {
                 if (storeContext == childData.val().store) {
                     if (childData.val().status == "closed") {
-                        return assistant.ask(`<speak> Sorry, this Bite is already closed, try to be faster next time. </speak>`)
+                        return assistant.ask(`<speak> Sorry, this Bite is already closed, try ordering from another store. </speak>`)
                     } else {
                         location = childData.val().location;
                         productRef = admin.database().ref('products/' + childData.val().store);
                         dbref = 'user_order/' + childData.key + "/" + userKey;
                         userOrderRef = admin.database().ref('user_order/' + childData.key + "/" + userKey);
                     }
-
                 } else {
-                    speech = `<speak> Looks like there aren't any open Bites for your store, you can try starting one! </speak>`;
+                    speech = `<speak> There are no open Bites for this store, try ordering from somewhere else or create a Bite here. </speak>`;
                     //assistant.ask(speech);
                 }
             });
@@ -429,18 +429,25 @@ exports.quickOrder = (assistant) => {
                         if (check != 0) {
                             assistant.data = { userStore: storeContext, userOrders: assistant.data.userOrders };
                             assistant.setContext("edit_order", 2);
-                            speech = `<speak> Added ${updateString}
-                             Your order contains: ${updateString1} ${orderString} with a total price of
-                             <say-as interpret-as="currency">EUR${productPrice / 100}</say-as>. 
-                             You can add and remove items from your order, or lock it when you're done.
-                         </speak>`;
+                            speech = `<speak>  Added ${updateString}` +
+                                `Your order contains: ${updateString1} ${orderString} with a total price of` +
+                                `<say-as interpret-as="currency">EUR${productPrice / 100}</say-as>.` +
+                                `You can add and remove items from your order, or lock it when you're done.` +
+                                `</speak>`;
+                            return assistant.ask(assistant.buildRichResponse()
+                                .addSimpleResponse({ speech })
+                                .addSuggestions(['add', 'remove', 'lock', 'Never mind'])
+                            );
                         }
                         assistant.ask(speech);
                     }))
                 }))
             } else {
-                speech = `<speak> There aren't any open Bites for this store, try ordering from somewhere else. </speak>`;
-                assistant.ask(speech);
+                speech = `<speak> There are no open Bites for this store, try ordering from somewhere else or create a Bite here. </speak>`;
+                assistant.ask(assistant.buildRichResponse()
+                    .addSimpleResponse({ speech })
+                    .addSuggestions(['create', 'start ', 'help', 'Never mind'])
+                );
             }
         }))
     }));
@@ -462,7 +469,8 @@ exports.AdminFunctions = (assistant) => {
     let storeName;
     let storeLocation;
 
-    let speech = `<speak> You don't have permission to close this Bite. Make sure that you're an admin and that you're using a mobile device. </speak>`;
+    let speech = `<speak> You don't have permission to close this Bite. What do you want to do? </speak>`;
+    //Make sure that you're an admin and that you're using a mobile device.
     let ordercheck = 0;
     orderRef.once('value', ((orderData) => {
         storeRef.once('value', ((storeData) => {
@@ -470,7 +478,7 @@ exports.AdminFunctions = (assistant) => {
                 if (childData.val().store == storeContext) {
                     console.log(changeContext);
                     if (changeContext == "add") {
-                        speech = `<speak> There is already an open Bite for this store, please choose another store. </speak>`;
+                        speech = `<speak> There is already an open Bite for this store, try ordering from one of the other stores. </speak>`;
                         ordercheck++;
                     } else if (changeContext == "remove") {
                         if (hasScreen) {
@@ -486,7 +494,8 @@ exports.AdminFunctions = (assistant) => {
                                 admin.database().ref('orders/' + childData.key).update({
                                     status: "closed"
                                 });
-                                speech = `<speak> The Bite has been closed and no further orders can be placed. </speak>`;
+                                speech = `<speak> The Bite has been closed and no further orders can be placed here. Thanks for ordering with Bite! </speak>`;
+                                return assistant.tell(speech);
                             }
                         }
                         ordercheck++;
@@ -516,7 +525,8 @@ exports.AdminFunctions = (assistant) => {
                 });
                 assistant.setContext("edit_order", 2);
                 assistant.setContext("user_order", 2);
-                speech = `<speak> I’ve opened a Bite for ${storeName} in ${storeLocation}. The Bite will be open for 30 minutes so hurry up and place your orders!  </speak>`;
+                speech = `<speak> I've opened a Bite for ${storeName} in ${storeLocation}. The Bite will be open for 30 minutes so hurry up and place your orders!  </speak>`;
+                return assistant.tell(speech);
             }
             assistant.ask(speech);
         }))
@@ -525,7 +535,14 @@ exports.AdminFunctions = (assistant) => {
 
 exports.lockOrder = (assistant) => {
     //get the arguments from the user query
-    const storeContext = assistant.getArgument("store");
+    let storeContext;
+    if (assistant.data.userStore) {
+        storeContext = assistant.data.userStore;
+    } else if (assistant.getArgument("store")) {
+        storeContext = assistant.getArgument("store");
+    } else {
+        return assistant.ask(`<speak> Sorry, I couldn't lock your order. Please choose a store.</speak>`)
+    }
 
     //get the userID
     let userkey = assistant.data.userkey;
@@ -622,8 +639,12 @@ exports.finishOrder = (assistant) => {
                     speech = `<speak> ${lockedUsers} out of ${users} user(s) have locked their order. Want to hear all orders? </speak>`;
                 } else {
                     speech = `<speak> This Bite doesn't have any orders yet, maybe you should place the first one! </speak>`;
+                    return assistant.ask(speech);
                 }
-                assistant.ask(speech);
+                assistant.ask(assistant.buildRichResponse()
+                    .addSimpleResponse({ speech })
+                    .addSuggestions(['Yes', 'No '])
+                );
             }))
         }))
     }))
@@ -680,7 +701,7 @@ exports.listTotalOrder = (assistant) => {
                 orderString += `<say-as interpret-as="cardinal">` + amountArray[i] + "</say-as> " + nameArray[i] + ", ";
             }
             if (i != 0) {
-                speech = `<speak> The combined order of all users consists of: ${orderString} with a total cost of <say-as interpret-as="currency">EUR${orderprice / 100}</say-as>. </speak>`;
+                speech = `<speak> The combined order of all users consists of: ${orderString} with a total cost of <say-as interpret-as="currency">EUR${orderprice / 100}</say-as>. Do you want to close the Bite? </speak>`;
             } else {
                 speech = `<speak> Oops, something went wrong, try again for a different store.  </speak>`;
             }
@@ -709,7 +730,7 @@ exports.learnMode = (assistant) => {
     }
 
     if (snack && !text) {
-        speech = `<speak> Your pronunciation of ${snack} was correct. No need to add any synonyms for it.</speak>`;
+        speech = `<speak> Your pronunciation of ${snack} was already correct. Do you want to teach me another pronunciation?</speak>`;
         assistant.ask(speech);
     } else if (text && !snack) {
         assistant.data = { text: text };
@@ -786,7 +807,7 @@ exports.learnMode = (assistant) => {
                 [
                     {
                         "synonyms":
-                        currentSynonyms
+                            currentSynonyms
                         ,
                         "value": snack,
                     }
@@ -797,7 +818,7 @@ exports.learnMode = (assistant) => {
             req.write(body);
             req.end();
 
-            speech = `<speak> added your pronounciation: ${text} as a synonym for ${snack} </speak>`;
+            speech = `<speak> added your pronounciation: ${text} as a synonym for ${snack}. Want to add another? </speak>`;
             assistant.ask(speech);
             assistant.data = { text: null };
         }
@@ -820,6 +841,7 @@ function getUserOrder(assistant, user) {
     let i = 0;
     let o = 0;
     let message = " A Bite just Opened at ";
+    let quickStore;
     let speech;
     orderRef.once('value', ((orderData) => {
         userOrderRef.once('value', ((userOrderData) => {
@@ -837,6 +859,7 @@ function getUserOrder(assistant, user) {
                         storeData.forEach((childData) => {
                             if (orderChild.val().store == childData.key) {
                                 message += childData.val().name + ", ";
+                                quickStore = childData.val().name;
                                 o = 1;
                             }
                         })
@@ -873,12 +896,18 @@ function getUserOrder(assistant, user) {
                     }
                     assistant.data = { username: user.val().display_name, userkey: user.key };
                     if (o == 0) {
-                        speech = `<speak> Welcome ${user.val().display_name}! No Bites have recently been opened, you can use the create command to start a new Bite or say start to order from older Bites. </speak>`;
+                        speech = `<speak> Welcome ${user.val().display_name}! No Bites have recently been opened, you can use the create command to open a new Bite or say start to order from older Bites. </speak>`;
+                        return assistant.ask(assistant.buildRichResponse()
+                            .addSimpleResponse({ speech })
+                            .addSuggestions(['start', 'create ', 'help', 'Never mind'])
+                        );
                     } else {
-                        speech = `<speak> Welcome ${user.val().display_name}!` + message + ` do you want to place an order here?.</speak>`;
+                        speech = `<speak> Welcome ${user.val().display_name}!` + message + ` do you want to place an order here?</speak>`;
+                        return assistant.ask(assistant.buildRichResponse()
+                            .addSimpleResponse({ speech })
+                            .addSuggestions(['order from ' + quickStore , 'yes ', 'help', 'Never mind'])
+                        );
                     }
-
-                    assistant.ask(speech);
                 } else {
                     assistant.setContext("user_order", 2);
                     assistant.setContext("edit_order", 2);
@@ -889,7 +918,10 @@ function getUserOrder(assistant, user) {
 
                     const speech = `<speak> Welcome ${user.val().display_name}! You have ${check} open order(s) at ${storeString}<break time="1"/>` +
                         `Would you like to edit a current order or start another?</speak>`;
-                    assistant.ask(speech);
+                    assistant.ask(assistant.buildRichResponse()
+                        .addSimpleResponse({ speech })
+                        .addSuggestions(['edit', 'create ', 'start', 'Never mind'])
+                    );
                 }
             }))
         }))

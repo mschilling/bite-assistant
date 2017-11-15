@@ -1,93 +1,94 @@
 <html>
-
-<head>
-  <script src="https://apis.google.com/js/platform.js" async defer></script>
-  <meta name="google-signin-client_id" content="YOUR_CLIENT_ID">
-</head>
-
-<body>
-  <script>
-    var YOUR_CLIENT_ID = 'YOUR_CLIENT_ID';
-
-    //If there's an access token, try an API request.
-    //Otherwise, start OAuth 2.0 flow.
-    // function trySampleRequest() {
-    //   var searchParams = new URLSearchParams(window.location.search);
-    //   var code = searchParams.get("code");
-    //   if (code) {
-    //     exchangeOAuth2Token();
-    //   } else {
-    //     oauth2SignIn();
-    //   }
-    // }
-
-    /*
-     * Create form to request access token from Google's OAuth 2.0 server.
-     */
-    function oauth2SignIn() {
-      // Google's OAuth 2.0 endpoint for requesting an access token
-      var oauth2Endpoint = 'https://accounts.google.com/o/oauth2/v2/auth';
-
-      // Create element to open OAuth 2.0 endpoint in new window.
-      var form = document.createElement('form');
-      form.setAttribute('method', 'GET'); // Send as a GET request.
-      form.setAttribute('action', oauth2Endpoint);
-
-      var searchParams = new URLSearchParams(window.location.search);
-      var state = searchParams.get("state");
-      var redirect_uri = searchParams.get("redirect_uri");
-      //var client_id = searchParams.get("client_id");
-
-      // Parameters to pass to OAuth 2.0 endpoint.
-      var params = {
-        'client_id': YOUR_CLIENT_ID,
-        'redirect_uri': redirect_uri,
-        'scope': 'email',
-        'state': state,
-        'response_type': 'token',
-        'include_granted_scopes': 'true'
-      };
-
-      // Add form parameters as hidden input values.
-      for (var p in params) {
-        var input = document.createElement('input');
-        input.setAttribute('type', 'hidden');
-        input.setAttribute('name', p);
-        input.setAttribute('value', params[p]);
-        form.appendChild(input);
+  
+  <head>
+    <script src="https://apis.google.com/js/platform.js" async defer></script>
+    <meta name="google-signin-client_id" content="389337808613-er36cu9jhlmep0mlc15srvpndjbob149.apps.googleusercontent.com">
+  </head>
+  
+  <body>
+    <script>
+      var YOUR_CLIENT_ID = '389337808613-er36cu9jhlmep0mlc15srvpndjbob149.apps.googleusercontent.com';
+      var YOUR_REDIRECT_URI = 'bite-4ce99.firebaseapp.com';
+  
+      // If there's an access token, try an API request.
+      // Otherwise, start OAuth 2.0 flow.
+      // function trySampleRequest() {
+      //   var searchParams = new URLSearchParams(window.location.search);
+      //   var code = searchParams.get("code");
+      //   if (code) {
+      //     exchangeOAuth2Token();
+      //   } else {
+      //     oauth2SignIn();
+      //   }
+      // }
+  
+      /*
+       * Create form to request access token from Google's OAuth 2.0 server.
+       */
+      function oauth2SignIn() {
+        // Google's OAuth 2.0 endpoint for requesting an access token
+        var oauth2Endpoint = 'https://accounts.google.com/o/oauth2/v2/auth';
+  
+        // Create element to open OAuth 2.0 endpoint in new window.
+        var form = document.createElement('form');
+        form.setAttribute('method', 'GET'); // Send as a GET request.
+        form.setAttribute('action', oauth2Endpoint);
+  
+        var searchParams = new URLSearchParams(window.location.search);
+        var state = searchParams.get("state");
+        var redirect_uri = searchParams.get("redirect_uri");
+        var client_id = searchParams.get("client_id");
+  
+        // Parameters to pass to OAuth 2.0 endpoint.
+        var params = {
+          'client_id': YOUR_CLIENT_ID,
+          'redirect_uri': redirect_uri,
+          'scope': 'email',
+          'state': state,
+          'response_type': 'token',
+          'include_granted_scopes': 'true'
+        };
+  
+        // Add form parameters as hidden input values.
+        for (var p in params) {
+          var input = document.createElement('input');
+          input.setAttribute('type', 'hidden');
+          input.setAttribute('name', p);
+          input.setAttribute('value', params[p]);
+          form.appendChild(input);
+        }
+  
+        // Add form to page and submit it to open the OAuth 2.0 endpoint.
+        document.body.appendChild(form);
+        form.submit();
       }
-
-      // Add form to page and submit it to open the OAuth 2.0 endpoint.
-      document.body.appendChild(form);
-      form.submit();
-    }
-
-    /* Verify the access token received on the query string. */
-    // function exchangeOAuth2Token() {
-    //   var oauth2Endpoint = 'https://www.googleapis.com/oauth2/v4/token';
-    //   var searchParams = new URLSearchParams(window.location.search);
-    //   var code = searchParams.get("code");
-    //   var state = searchParams.get("state");
-    //   console.log(code);
-    // var xhr = new XMLHttpRequest();
-    // xhr.open('POST', oauth2Endpoint + '?code=' + code + '&client_id=' +
-    //   YOUR_CLIENT_ID + '&client_secret=9jaYYGSwyfJ7-Bkgcm_3sP3X&redirect_uri=bite-4ce99.firebaseapp.com&grant_type=authorization_code');
-    // console.log(xhr.readyState);
-    // xhr.send();
-    // xhr.onreadystatechange = function () {
-    //   console.log(xhr.readyState);
-    //   if (xhr.readyState == 4) {
-    //     var response = JSON.parse(xhr.response);
-    //     console.log(response);
-    //     //alert(response.access_token);
-    //     var encodedString = state;
-
-    //window.location.replace("https://oauth-redirect.googleusercontent.com/r/bite-4ce99#access_token=" + response.access_token + '&token_type=bearer&state=' + state);
-    // }
-    //};
-    //}
-    oauth2SignIn();
-  </script>
-</body>
-
-</html>
+  
+      // /* Verify the access token received on the query string. */
+      // function exchangeOAuth2Token() {
+      //   var oauth2Endpoint = 'https://www.googleapis.com/oauth2/v4/token';
+      //   var searchParams = new URLSearchParams(window.location.search);
+      //   var code = searchParams.get("code");
+      //   var state = searchParams.get("state");
+      //   console.log(code);
+      //   var xhr = new XMLHttpRequest();
+      //   xhr.open('POST', oauth2Endpoint + '?code=' + code + '&client_id=' +
+      //     YOUR_CLIENT_ID + '&client_secret=9jaYYGSwyfJ7-Bkgcm_3sP3X&redirect_uri=bite-4ce99.firebaseapp.com&grant_type=authorization_code');
+      //   console.log(xhr.readyState);
+      //   xhr.send();
+      //   xhr.onreadystatechange = function () {
+      //     console.log(xhr.readyState);
+      //     if (xhr.readyState == 4) {
+      //       var response = JSON.parse(xhr.response);
+      //       console.log(response);
+      //       //alert(response.access_token);
+      //       var encodedString = state;
+  
+      //       window.location.replace("https://oauth-redirect.googleusercontent.com/r/bite-4ce99#access_token=" + response.access_token + '&token_type=bearer&state=' + state);
+      //     }
+      //   };
+      // }
+      oauth2SignIn();
+    </script>
+  </body>
+  
+  </html>

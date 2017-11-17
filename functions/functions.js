@@ -328,7 +328,8 @@ exports.quickOrder = (assistant) => {
     const snackContext = assistant.getArgument("snack");
     let amountContext = assistant.getArgument("number");
     let storeContext = assistant.getArgument("store");
-    console.log("Change: " + changeContext + ", Snack: " + snackContext + ", Amount: " + amountContext + ", Store: " + storeContext);
+    let sauceContext = assistant.getArgument("sauce");
+    console.log("Change: " + changeContext + ", Snack: " + snackContext + ", Amount: " + amountContext + ", Store: " + storeContext + ", sauce: " + sauceContext );
     if (changeContext == "remove") {
         speech = `<speak> You need to be in edit mode to remove an item, try saying edit, followed by your store of choice. </speak>`;
         return assistant.ask(assistant.buildRichResponse()
@@ -386,7 +387,6 @@ exports.quickOrder = (assistant) => {
                                 if (snackContext != null) {
 
                                     snackContext.forEach(function (entry) {
-
                                         if (userOrderData.val().name == entry) {
                                             check = 1;
                                             productcheck = 1;
@@ -437,6 +437,11 @@ exports.quickOrder = (assistant) => {
                             return assistant.ask(assistant.buildRichResponse()
                                 .addSimpleResponse({ speech })
                                 .addSuggestions(['add', 'remove', 'lock', 'Never mind'])
+                            );
+                        }else{
+                            speech = `<speak> Your snack isn't available at this store, try ordering from another store or change your order. </speak>`;
+                            return assistant.ask(assistant.buildRichResponse()
+                                .addSimpleResponse({ speech })
                             );
                         }
                         assistant.ask(speech);

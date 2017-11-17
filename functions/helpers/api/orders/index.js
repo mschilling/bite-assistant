@@ -8,16 +8,23 @@ const admin = require('firebase-admin');
 const ordersRef = admin.firestore().collection('orders');
 
 function getOpenOrders() {
-  return ordersRef
-    .where('status', '==', 'open')
-    .get()
+  let snacks = [];
+  let docID;
+  return ordersRef.where('status', '==', 'open').where('store', '==', 0).get()
     .then(snapshot => {
-      const docs = [];
-      for (let i = 0; i < snapshot.docs.length; i++) {
-        docs.push(snapshot.docs[i].data());
-      }
-      return docs;
-    });
+      snapshot.forEach(doc => {
+        docID = doc.id;
+      });
+      return docID;
+    }).then(snapshot => {
+      return ordersRef.doc(snapshot).collection('orders').doc("2zjwkTWsWAd2ZyU2EoBnQrvU2fz2").collection('snacks').get()
+        .then(snapshot => {
+          snapshot.forEach(doc => {
+            snacks.push(doc);
+          });
+          return snacks;
+        })
+    })
 }
 
 module.exports = {

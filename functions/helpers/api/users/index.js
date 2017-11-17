@@ -37,15 +37,7 @@ function getUser(userId) {
 }
 
 function getUserAuth(accestoken) {
-  return usersRef.where('access_token', '==', accestoken)
-    .get()
-    .then(snapshot => {
-      const users;
-      for (let i = 0; i < snapshot.docs.length; i++) {
-        users.push(snapshot.docs[i]);
-      }
-      return users;
-    });
+
 }
 
 module.exports = {

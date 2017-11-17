@@ -9,8 +9,8 @@ const admin = require('../functions/node_modules/firebase-admin');
 const serviceAccount = require('./service-account.json');
 
 admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-    databaseURL: 'https://m4m-bite.firebaseio.com'
+  credential: admin.credential.cert(serviceAccount),
+  databaseURL: 'https://m4m-bite.firebaseio.com'
 });
 
 const api = require('../functions/helpers/api');
@@ -24,16 +24,16 @@ testGetOpenOrders();
 
 function testGetUsers() {
   return api.getUsers()
-  .then( data => {
-    (data || []).forEach( user => {
-      console.log(user.name, chalk.bgRed(user.email));
+    .then(data => {
+      (data || []).forEach(user => {
+        console.log(user.name, chalk.bgRed(user.email));
+      });
     });
-  });
 }
 
 function testGetUser(userId) {
   return api.getUser(userId)
-    .then( user => {
+    .then(user => {
       console.log(user);
     })
     .catch(error => {
@@ -42,14 +42,22 @@ function testGetUser(userId) {
 }
 
 function testGetOpenOrders() {
-  return api.getOpenOrders()
-  .then( data => {
-    (data || []).forEach( order => {
-      let openedBy = order.opened_by;
-      return api.getUser(order.opened_by)
-        .then( usr => {
-          console.log(order.location, order.store, chalk.bgRed(order.status), usr.name);
-        });
-    });
+  api.getOpenOrders().then(iets => {
+    for (let i = 0; i < iets.length; i++) {
+      console.log(iets[i].data());
+    }
+    //console.log(iets[0].data());
   });
+
+  // return api.getOpenOrders()
+  // .then( data => {
+  //   data.forEach( order => {
+
+  //     // let openedBy = order.opened_by;
+  //     // return api.getUser(order.opened_by)
+  //     //   .then( usr => {
+  //     //     console.log(order.location, order.store, chalk.bgRed(order.status), usr.name);
+  //     //   });
+  //   });
+  // });
 }

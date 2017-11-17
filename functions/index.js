@@ -25,7 +25,6 @@ exports.Bite = functions.https.onRequest((request, response) => {
   let actionMap = new Map();
   actionMap.set('input.start', getOrderLocation);
   actionMap.set('input.welcome', login);
-  actionMap.set('input.welcome.followup', signup);
   actionMap.set('input.order', placeOrder);
   actionMap.set('input.admin', createBite);
   actionMap.set('input.lock', lockOrder);
@@ -42,12 +41,6 @@ exports.Bite = functions.https.onRequest((request, response) => {
   */
   function login(assistant) {
     biteFunctions.biteUser(assistant);
-    //biteFunctions.getUserOrders(assistant);
-  }
-
-  function signup(assistant) {
-    biteFunctions.userSignUp(request, assistant);
-    //biteFunctions.getUserOrders(assistant);
   }
 
   /*
@@ -55,34 +48,15 @@ exports.Bite = functions.https.onRequest((request, response) => {
   select the location & store to order from.
   */
   function getOrderLocation(assistant) {
-    //check if user is logged in
-    if (biteFunctions.biteLoginCheck(assistant)) {
       biteFunctions.biteLocation(assistant);
-    } else {
-      //redirect back to the login process.
-      assistant.setContext("DefaultWelcomeIntent-followup", 2);
-      login(assistant);
-    }
   }
 
   function getUserOrder(assistant) {
-    if (biteFunctions.biteLoginCheck(assistant)) {
       biteFunctions.getUserOrderItems(assistant);
-    } else {
-      //redirect back to the login process.
-      assistant.setContext("DefaultWelcomeIntent-followup", 2);
-      login(assistant);
-    }
   }
 
   function placeOrder(assistant) {
-    if (biteFunctions.biteLoginCheck(assistant)) {
       biteFunctions.quickOrder(assistant);
-    } else {
-      //redirect back to the login process.
-      assistant.setContext("DefaultWelcomeIntent-followup", 2);
-      login(assistant);
-    }
   }
 
   function createBite(assistant) {

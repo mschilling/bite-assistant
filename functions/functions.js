@@ -265,7 +265,7 @@ exports.getUserOrderItems = (assistant) => {
                 `You can add and remove items from your order, or lock it when you're done.` +
                 `</speak>`
         } else {
-            speech = `<speak>${amountAndSnacksFail} was not found in this store .</speak>`
+            speech = `<speak>${amountAndSnacksFail} was not found in this store, try ordering from a different store.</speak>`
         }
         assistant.ask(speech);
     }
@@ -375,79 +375,64 @@ exports.quickOrder = (assistant) => {
 
 //Create/Delete a Bite
 exports.AdminFunctions = (assistant) => {
-    //check if the device is not a speaker
+
+    //check if the device is a phone
     let hasScreen = assistant.hasSurfaceCapability(assistant.SurfaceCapabilities.SCREEN_OUTPUT)
+
     //get the arguments from the user query
     const changeContext = assistant.getArgument("action");
     const storeContext = assistant.getArgument("store");
     console.log("Change: " + changeContext + ", Store: " + storeContext);
-    console.log(assistant.getContext("admin"));
+
     //get the userID
     let userkey = assistant.data.userkey;
 
-    //get the store location and name
-    let storeName;
-    let storeLocation;
-
     let speech = `<speak> You don't have permission to close this Bite. Make sure that you're an admin and that you're using a mobile device. </speak>`;
     let ordercheck = 0;
-    orderRef.once('value', ((orderData) => {
-        storeRef.once('value', ((storeData) => {
-            orderData.forEach((childData) => {
-                if (childData.val().store == storeContext) {
-                    console.log(changeContext);
-                    if (changeContext == "add") {
-                        speech = `<speak> There is already an open Bite for this store, please choose another store. </speak>`;
-                        ordercheck++;
-                    } else if (changeContext == "remove") {
-                        if (hasScreen) {
-                            if (assistant.data.userkey == childData.val().opened_by || assistant.getContext("admin")) {
-                                admin.database().ref('orders/' + childData.key).remove();
-                                speech = `<speak> The Bite has been removed! Anything else you want to do?</speak>`;
-                            }
+
+    FS_Orders.where('status', '==', 'open').where('store', '==', storeContext).get()
+        .then(snapshot => {
+            snapshot.forEach(doc => {
+                if (changeContext == "remove" || changeContext == "close") {
+                    if (hasScreen) {
+                        if (assistant.data.userkey == doc.data().opened_by || assistant.getContext("admin")) {
+                            FS_Orders.doc(doc.id).update({
+                                status: "closed"
+                            });
+                            speech = `<speak> The ${doc.data().storename} Bite has been closed. Anything else? </speak>`;
                         }
-                        ordercheck++;
-                    } else if (changeContext == "close") {
-                        if (hasScreen) {
-                            if (assistant.data.userkey == childData.val().opened_by || assistant.getContext("admin")) {
-                                admin.database().ref('orders/' + childData.key).update({
-                                    status: "closed"
-                                });
-                                speech = `<speak> The Bite has been closed and no further orders can be placed. </speak>`;
-                            }
-                        }
-                        ordercheck++;
-                    } else {
-                        speech = `<speak> Please use one of the Open, Close or Remove commands. </speak>`;
-                        ordercheck++;
                     }
+                } else {
+                    speech = `<speak> There is already an open Bite for this store, please choose another store. </speak>`;
                 }
-            })
-            if (ordercheck == 0) {
-                storeData.forEach((childData) => {
-                    if (childData.val().id == storeContext) {
-                        storeName = childData.val().name;
-                        storeLocation = childData.val().location;
-                    }
-                })
-                var now = new Date();
-                var newPostKey = admin.database().ref().child('orders/').push().key;
-                admin.database().ref('orders/' + newPostKey).set({
-                    open_time: now.setMinutes(now.getMinutes() + 0),
-                    close_time: now.setMinutes(now.getMinutes() + 30),
-                    duration: 30,
-                    location: storeLocation,
-                    opened_by: userkey,
-                    status: "open",
-                    store: storeContext
-                });
-                assistant.setContext("edit_order", 2);
-                assistant.setContext("user_order", 2);
-                speech = `<speak> I’ve opened a Bite for ${storeName} in ${storeLocation}. The Bite will be open for 30 minutes so hurry up and place your orders!  </speak>`;
+                ordercheck = 1;
+                assistant.ask(speech);
+            });
+            return ordercheck;
+        }).then(ordercheck => {
+            if (ordercheck == 0 && changeContext == "add" ) {
+                FS_Stores.doc(storeContext).get()
+                    .then(doc => {
+                        let now = new Date();
+                        FS_Orders.doc((storeContext + now.setMinutes(now.getMinutes() + 0)).toString()).set({
+                            open_time: now.setMinutes(now.getMinutes() + 0),
+                            close_time: now.setMinutes(now.getMinutes() + 30),
+                            duration: 30,
+                            location: doc.data().location,
+                            opened_by: userkey,
+                            status: "open",
+                            store: storeContext,
+                            storename: doc.data().name
+                        }).then(() => {
+                            speech = `<speak> I’ve opened a Bite for ${doc.data().name} in ${doc.data().location}. The Bite will be open for 30 minutes so hurry up and place your orders!  </speak>`;
+                            return assistant.tell(speech);
+                        })
+                    })
+            }else{
+                speech = `<speak> There is no open Bite for this store, try for another store! </speak>`;
+                return assistant.ask(speech);
             }
-            assistant.ask(speech);
-        }))
-    }))
+        })
 };
 
 exports.lockOrder = (assistant) => {

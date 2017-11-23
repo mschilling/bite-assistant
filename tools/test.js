@@ -42,11 +42,12 @@ function testGetUser(userId) {
 }
 
 function testGetOpenOrders() {
-  api.getOpenOrders().then(iets => {
-    for (let i = 0; i < iets.length; i++) {
-      console.log(iets[i].data());
+  api.getOpenOrders().then(array => {
+    for (let i = 0; i < array.length; i++) {
+      //amountAndSnacks += array[i].data().amount + " " + array[i].data().name + ", ";
+      console.log(array[i].data().amount + " " + array[i].data().name + ", ");
+      //totalPrice += array[i].data().price;
     }
-    //console.log(iets[0].data());
   });
 
   // return api.getOpenOrders()

@@ -290,7 +290,7 @@ exports.quickOrder = (assistant) => {
     }
 
     //get the right open bite
-    let getOpenOrders = FS_Orders.where('status', '==', 'open').where('store', '==', parseInt(storeContext)).get()
+    let getOpenOrders = FS_Orders.where('status', '==', 'open').where('store', '==', storeContext).get()
         .then(snapshot => {
             //should only ever return 1 store
             snapshot.forEach(doc => {
@@ -410,7 +410,7 @@ exports.AdminFunctions = (assistant) => {
             });
             return ordercheck;
         }).then(ordercheck => {
-            if (ordercheck == 0 && changeContext == "add" ) {
+            if (ordercheck == 0 && changeContext == "add") {
                 FS_Stores.doc(storeContext).get()
                     .then(doc => {
                         let now = new Date();
@@ -428,7 +428,7 @@ exports.AdminFunctions = (assistant) => {
                             return assistant.tell(speech);
                         })
                     })
-            }else{
+            } else {
                 speech = `<speak> There is no open Bite for this store, try for another store! </speak>`;
                 return assistant.ask(speech);
             }
@@ -443,44 +443,25 @@ exports.lockOrder = (assistant) => {
     let userkey = assistant.data.userkey;
 
     let speech;
-    let ordercheck = 0;
 
-    userRef.once('value', ((userData) => {
-        orderRef.once('value', ((orderData) => {
-            userOrderRef.once('value', ((userOrderData) => {
-
-                //foreach open Bite
-                orderData.forEach((orderChild) => {
-
-                    //check if the Bite in the user_order table is open
-                    userOrderData.forEach((childData) => {
-
-                        if (orderChild.key == childData.key) {
-                            if (storeContext == orderChild.val().store) {
-                                //check user ids
-                                userOrderData.child(childData.key).forEach(function (userOrderData) {
-                                    if (userkey == userOrderData.key) {
-                                        admin.database().ref('user_order_locked/' + childData.key + "/" + userOrderData.key + "/").set(true);
-                                        ordercheck++;
-                                    }
-                                })
-                            }
+    FS_Orders.where('status', '==', 'open').where('store', '==', storeContext).get()
+        .then(snapshot => {
+            snapshot.forEach(doc => {
+                FS_Orders.doc(doc.id).collection("orders").doc(userkey).get()
+                    .then(doc => {
+                        if (!doc.exists) {
+                            speech = `<speak> Sorry, I couldn't lock your order. You can try for a different store.  </speak>`;
+                            assistant.ask(speech);
+                        } else {
+                            FS_Orders.doc(doc.id).collection("orders").doc(userkey).update({
+                                locked: true
+                            })
+                            speech = `<speak> Your order has been locked! Thanks for ordering with Bite!</speak>`;
+                            assistant.tell(speech);
                         }
                     })
-                })
-
-                let speech;
-
-                if (ordercheck == 0) {
-                    speech = `<speak> Sorry, I couldn't lock your order. You can try for a different store.  </speak>`;
-                    assistant.ask(speech);
-                } else {
-                    speech = `<speak> Your order has been locked! Thanks for ordering with Bite!</speak>`;
-                    assistant.tell(speech);
-                }
-            }))
-        }))
-    }))
+            })
+        })
 };
 
 exports.finishOrder = (assistant) => {
@@ -696,9 +677,8 @@ exports.learnMode = (assistant) => {
             req.on('error', function (e) {
                 console.log('problem with request: ' + e.message);
             });
-            console.log("current:1 " + currentSynonyms);
+
             currentSynonyms.push(text);
-            console.log("current:2 " + currentSynonyms);
             let body = JSON.stringify(
                 [
                     {

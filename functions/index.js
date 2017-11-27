@@ -10,7 +10,7 @@ Function List:
 process.env.DEBUG = 'actions-on-google:*';
 
 const biteFunctions = require('./functions.js');
-const Assistant = require('actions-on-google').ApiAiAssistant;
+const Assistant = require('actions-on-google').DialogflowApp;
 const functions = require('firebase-functions');
 
 //start of the firebase function

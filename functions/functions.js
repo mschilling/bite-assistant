@@ -1,18 +1,11 @@
 'use strict';
-
 process.env.DEBUG = 'actions-on-google:*';
 
-const Assistant = require('actions-on-google').ApiAiAssistant;
 const functions = require('firebase-functions');
 
 //firebase database refs
 const admin = require('firebase-admin');
 admin.initializeApp(functions.config().firebase);
-const orderRef = admin.database().ref('orders');
-const storeRef = admin.database().ref('stores');
-const userRef = admin.database().ref('users');
-const userOrderRef = admin.database().ref('user_order');
-const userOrderLockedRef = admin.database().ref('user_order_locked');
 
 //FIRESTORE
 var db = admin.firestore();
@@ -25,6 +18,7 @@ const FS_Users = db.collection('users');
 //Moment.js
 var moment = require('moment');
 moment().format();
+
 
 /*
 Login
@@ -290,7 +284,7 @@ exports.quickOrder = (assistant) => {
     }
 
     //get the right open bite
-    let getOpenOrders = FS_Orders.where('status', '==', 'open').where('store', '==', storeContext).get()
+    let getOpenOrders = FS_Orders.where('status', '==', 'open').where('store', '==', parseInt(storeContext)).get()
         .then(snapshot => {
             //should only ever return 1 store
             snapshot.forEach(doc => {
@@ -390,7 +384,7 @@ exports.AdminFunctions = (assistant) => {
     let speech = `<speak> You don't have permission to close this Bite. Make sure that you're an admin and that you're using a mobile device. </speak>`;
     let ordercheck = 0;
 
-    FS_Orders.where('status', '==', 'open').where('store', '==', storeContext).get()
+    FS_Orders.where('status', '==', 'open').where('store', '==', parseInt(storeContext)).get()
         .then(snapshot => {
             snapshot.forEach(doc => {
                 if (changeContext == "remove" || changeContext == "close") {
@@ -444,7 +438,7 @@ exports.lockOrder = (assistant) => {
 
     let speech;
 
-    FS_Orders.where('status', '==', 'open').where('store', '==', storeContext).get()
+    FS_Orders.where('status', '==', 'open').where('store', '==', parseInt(storeContext)).get()
         .then(snapshot => {
             snapshot.forEach(doc => {
                 FS_Orders.doc(doc.id).collection("orders").doc(userkey).get()
@@ -480,10 +474,8 @@ exports.finishOrder = (assistant) => {
 
     //get the open Bite for the selected store
     //get all user orders and check if they are locked
-    FS_Orders.where('status', '==', 'open').where('store', '==', storeContext).get()
+    FS_Orders.where('status', '==', 'open').where('store', '==', parseInt(storeContext)).get()
         .then(snapshot => {
-            console.log(snapshot.docs.length);
-            console.log(snapshot.size);
             if (snapshot.size > 0) {
                 snapshot.forEach(doc => {
                     FS_Orders.doc(doc.id).collection("orders").get()
@@ -496,7 +488,7 @@ exports.finishOrder = (assistant) => {
                                 }
                             })
                         }).then(() => {
-                            assistant.data = { userStore: storeContext, saveOrder: saveOrder };
+                            assistant.data = { userStore: storeContext, saveOrder: saveOrder, userkey: userkey };
                             if (users == lockedUsers && users != 0) {
                                 speech = `<speak> All ${users} user(s) have locked their order. Do you want me to tell you the total list of orders?</speak>`;
                             } else if (users != 0) {
@@ -522,35 +514,47 @@ exports.listTotalOrder = (assistant) => {
 
     let nameArray = [];
     let amountArray = [];
-    let i = 0;
+    let count = 0;
     let orderString = "";
     let orderprice = 0;
     let speech;
 
-    if (item.key == orderItemData.key) {
-        //if not in array
-        if (nameArray.indexOf(item.val().name) == -1) {
-            nameArray.push(item.val().name);
-            amountArray.push(orderItemData.val().amount);
-            i++;
-        } else {
-            let index = nameArray.indexOf(item.val().name);
-            let value = amountArray[index];
-            amountArray[index] = (value + orderItemData.val().amount);
-        }
-        orderprice += (orderItemData.val().amount * item.val().price);
-
-        for (i = 0; i < amountArray.length; i++) {
-            orderString += `<say-as interpret-as="cardinal">` + amountArray[i] + "</say-as> " + nameArray[i] + ", ";
-        }
-        if (i != 0) {
-            speech = `<speak> The combined order of all users consists of: ${orderString} with a total cost of <say-as interpret-as="currency">EUR${orderprice / 100}</say-as>. </speak>`;
-        } else {
-            speech = `<speak> Oops, something went wrong, try again for a different store.  </speak>`;
-        }
-        assistant.ask(speech);
-
-    }
+    //for each user that has an order in this store
+    FS_Orders.doc(savedOrder).collection('orders').get()
+        .then(snapshot => {
+            if (snapshot.size > 0) {
+                snapshot.forEach(doc => {
+                    //get all snacks of the user and save them
+                    getOrder(doc.id, storeContext).then(snacks => {
+                        snacks.forEach(doc => {
+                            let index = nameArray.indexOf(doc.data().name);
+                            if (index === 0) {
+                                amountArray[index] = (amountArray[index] + doc.data().amount);
+                            } else {
+                                nameArray.push(doc.data().name);
+                                amountArray.push(doc.data().amount);
+                            }
+                            orderprice += doc.data().price;
+                        })
+                        count++;
+                        if (count == snapshot.size) {
+                            for (let i = 0; i < amountArray.length; i++) {
+                                orderString += `<say-as interpret-as="cardinal">` + amountArray[i] + "</say-as> " + nameArray[i] + ", ";
+                            }
+                            if (count != 0) {
+                                speech = `<speak> The combined order of all users consists of: ${orderString} with a total cost of <say-as interpret-as="currency">EUR${orderprice / 100}</say-as>. </speak>`;
+                            } else {
+                                speech = `<speak> Oops, something went wrong, try again for a different store.  </speak>`;
+                            }
+                            assistant.ask(speech);
+                        }
+                    })
+                })
+            } else {
+                speech = `<speak> Oops, something went wrong, try again for a different store.  </speak>`;
+                assistant.ask(speech);
+            }
+        })
 }
 
 exports.learnMode = (assistant) => {
@@ -701,8 +705,6 @@ function getUserOrder(assistant, user) {
             if (stores.length != 0) {
                 let amount = 0;
                 for (let i = 0; i < stores.length; i++) {
-                    console.log(stores[i].id + " => " + stores[i].data().storename);
-                    console.log(userKey);
                     FS_Orders.doc(stores[i].id.toString()).collection('orders').doc(userKey).get()
                         .then(doc => {
                             if (doc.exists) {

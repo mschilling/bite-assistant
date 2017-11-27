@@ -467,59 +467,51 @@ exports.lockOrder = (assistant) => {
 exports.finishOrder = (assistant) => {
     //get the arguments from the user query
     const storeContext = assistant.getArgument("store");
-
     //get the userID
     let userkey = assistant.data.userkey;
-
-    let speech;
     //users in order
     let users = 0;
     //users that have their order locked
     let lockedUsers = 0;
-
+    //save the database key for the next intent
     let saveOrder;
+    //the response
+    let speech;
 
-    orderRef.once('value', ((orderData) => {
-        userOrderRef.once('value', ((userOrderData) => {
-            userOrderLockedRef.once('value', ((userOrderLockedData) => {
-
-                //foreach open Bite
-                orderData.forEach((orderChild) => {
-
-                    //check if the Bite in the user_order table is open
-                    userOrderData.forEach((childData) => {
-                        if (orderChild.key == childData.key) {
-
-                            //get the right store
-                            if (storeContext == orderChild.val().store) {
-                                saveOrder = childData.key;
-                                userOrderData.child(childData.key).forEach(function (allUsers) {
-                                    users++;
-                                })
-
-                                userOrderLockedData.forEach(function (userOrderLockedDataLoop) {
-                                    if (userOrderLockedDataLoop.key == childData.key) {
-                                        userOrderLockedData.child(userOrderLockedDataLoop.key).forEach(function (lockedChildData) {
-                                            lockedUsers++;
-                                        })
-                                    }
-                                })
+    //get the open Bite for the selected store
+    //get all user orders and check if they are locked
+    FS_Orders.where('status', '==', 'open').where('store', '==', storeContext).get()
+        .then(snapshot => {
+            console.log(snapshot.docs.length);
+            console.log(snapshot.size);
+            if (snapshot.size > 0) {
+                snapshot.forEach(doc => {
+                    FS_Orders.doc(doc.id).collection("orders").get()
+                        .then(userOrders => {
+                            userOrders.forEach(userOrder => {
+                                saveOrder = doc.id;
+                                users++;
+                                if (userOrder.data().locked == true) {
+                                    lockedUsers++;
+                                }
+                            })
+                        }).then(() => {
+                            assistant.data = { userStore: storeContext, saveOrder: saveOrder };
+                            if (users == lockedUsers && users != 0) {
+                                speech = `<speak> All ${users} user(s) have locked their order. Do you want me to tell you the total list of orders?</speak>`;
+                            } else if (users != 0) {
+                                speech = `<speak> ${lockedUsers} out of ${users} user(s) have locked their order. Want to hear all orders? </speak>`;
+                            } else {
+                                speech = `<speak> This Bite doesn't have any orders yet, maybe you should place the first one! </speak>`;
                             }
-                        }
-                    })
+                            assistant.ask(speech);
+                        })
                 })
-                assistant.data = { userStore: storeContext, saveOrder: saveOrder };
-                if (users == lockedUsers && users != 0) {
-                    speech = `<speak> All ${users} user(s) have locked their order. Do you want me to tell you the total list of orders?</speak>`;
-                } else if (users != 0) {
-                    speech = `<speak> ${lockedUsers} out of ${users} user(s) have locked their order. Want to hear all orders? </speak>`;
-                } else {
-                    speech = `<speak> This Bite doesn't have any orders yet, maybe you should place the first one! </speak>`;
-                }
+            } else {
+                speech = `<speak> There is no open Bite for this store, try starting one! </speak>`;
                 assistant.ask(speech);
-            }))
-        }))
-    }))
+            }
+        })
 };
 
 exports.listTotalOrder = (assistant) => {
@@ -535,57 +527,31 @@ exports.listTotalOrder = (assistant) => {
     let orderprice = 0;
     let speech;
 
-    // let FS_orderRef = FS_Orders.doc(savedOrder).where('status', '==', 'open').get()
-    //     .then(snapshot => {
-    //         snapshot.forEach(doc => {
+    if (item.key == orderItemData.key) {
+        //if not in array
+        if (nameArray.indexOf(item.val().name) == -1) {
+            nameArray.push(item.val().name);
+            amountArray.push(orderItemData.val().amount);
+            i++;
+        } else {
+            let index = nameArray.indexOf(item.val().name);
+            let value = amountArray[index];
+            amountArray[index] = (value + orderItemData.val().amount);
+        }
+        orderprice += (orderItemData.val().amount * item.val().price);
 
-    //         })
-    //     })
+        for (i = 0; i < amountArray.length; i++) {
+            orderString += `<say-as interpret-as="cardinal">` + amountArray[i] + "</say-as> " + nameArray[i] + ", ";
+        }
+        if (i != 0) {
+            speech = `<speak> The combined order of all users consists of: ${orderString} with a total cost of <say-as interpret-as="currency">EUR${orderprice / 100}</say-as>. </speak>`;
+        } else {
+            speech = `<speak> Oops, something went wrong, try again for a different store.  </speak>`;
+        }
+        assistant.ask(speech);
 
-    const userOrderRefUser = admin.database().ref('user_order/' + savedOrder);
-    const productRef = admin.database().ref('products/' + storeContext);
-
-    userOrderRefUser.once('value', ((userOrderData) => {
-        productRef.once('value', ((productData) => {
-
-            //foreach user that has placed an order
-            userOrderData.forEach((orderChildData) => {
-                userOrderData.child(orderChildData.key).forEach((orderItemData) => {
-
-                    productData.forEach((productChildData) => {
-                        //go to the products, an extra step since the database has a 2nd child element called products for some reason..
-                        productData.child(productChildData.key).forEach(function (item) {
-
-                            if (item.key == orderItemData.key) {
-                                //if not in array
-                                if (nameArray.indexOf(item.val().name) == -1) {
-                                    nameArray.push(item.val().name);
-                                    amountArray.push(orderItemData.val().amount);
-                                    i++;
-                                } else {
-                                    let index = nameArray.indexOf(item.val().name);
-                                    let value = amountArray[index];
-                                    amountArray[index] = (value + orderItemData.val().amount);
-                                }
-                                orderprice += (orderItemData.val().amount * item.val().price);
-                            }
-                        })
-                    })
-                })
-            })
-
-            for (i = 0; i < amountArray.length; i++) {
-                orderString += `<say-as interpret-as="cardinal">` + amountArray[i] + "</say-as> " + nameArray[i] + ", ";
-            }
-            if (i != 0) {
-                speech = `<speak> The combined order of all users consists of: ${orderString} with a total cost of <say-as interpret-as="currency">EUR${orderprice / 100}</say-as>. </speak>`;
-            } else {
-                speech = `<speak> Oops, something went wrong, try again for a different store.  </speak>`;
-            }
-            assistant.ask(speech);
-        }))
-    }))
-};
+    }
+}
 
 exports.learnMode = (assistant) => {
 
@@ -728,50 +694,54 @@ function getUserOrder(assistant, user) {
                     todayHasBite = true
                     message += doc.data().storename + ", ";
                 }
-                storeNames.push(doc.data().storename);
-                stores.push(doc.id);
+                stores.push(doc);
             });
-        }).then(snapshot => {
-            let amount = 0;
-            for (let i = 0; i < stores.length; i++) {
-                FS_Orders.doc(stores[i]).collection('orders').doc(userKey).get()
-                    .then(doc => {
-                        if (!doc.exists) {
-                            storeNames.splice(i); //remove the name of the store where the user has no orders
-                        } else {
-                            amountOfOrders++; //+1 order
-                        }
-                        amount++;
-                        if (amount === stores.length) {
-                            response();
-                        }
-                    })
+            return stores;
+        }).then(stores => {
+            if (stores.length != 0) {
+                let amount = 0;
+                for (let i = 0; i < stores.length; i++) {
+                    console.log(stores[i].id + " => " + stores[i].data().storename);
+                    console.log(userKey);
+                    FS_Orders.doc(stores[i].id.toString()).collection('orders').doc(userKey).get()
+                        .then(doc => {
+                            if (doc.exists) {
+                                amountOfOrders++; //+1 order
+                                storeNames.push(stores[i].data().storename);
+                            }
+                            amount++;
+                            if (amount === stores.length) {
+                                if (user.data().admin) {
+                                    assistant.setContext("admin", 10);
+                                }
+                                if (amountOfOrders == 0) {
+                                    assistant.setContext("user_order", 5);
+                                    assistant.data = { username: user.data().display_name, userkey: userKey };
+                                    if (!todayHasBite) {
+                                        speech = `<speak> Welcome ${user.data().display_name}! No Bites have recently been opened, you can use the create command to start a new Bite or say start to order from older Bites. </speak>`;
+                                    } else {
+                                        speech = `<speak> Welcome ${user.data().display_name}!` + message + ` do you want to place an order here?.</speak>`;
+                                    }
+                                    assistant.ask(speech);
+                                } else {
+                                    assistant.setContext("user_order", 2);
+                                    assistant.setContext("edit_order", 2);
+                                    assistant.data = { username: user.data().display_name, userkey: userKey };
+
+                                    const speech = `<speak> Welcome ${user.data().display_name}! You have ${amountOfOrders} open order(s) at ${storeNames.toString()}.<break time="1"/>` +
+                                        `Would you like to edit a current order or start another?</speak>`;
+                                    assistant.ask(speech);
+                                }
+                            }
+                        })
+                }
+            } else {
+                assistant.setContext("user_order", 5);
+                assistant.data = { username: user.data().display_name, userkey: userKey };
+                speech = `<speak> Welcome ${user.data().display_name}! No Bites have recently been opened, you can use the create command to start a new Bite. </speak>`;
+                assistant.ask(speech);
             }
         })
-
-    function response() {
-        if (user.data().admin) {
-            assistant.setContext("admin", 10);
-        }
-        if (amountOfOrders == 0) {
-            assistant.setContext("user_order", 5);
-            assistant.data = { username: user.data().display_name, userkey: userKey };
-            if (!todayHasBite) {
-                speech = `<speak> Welcome ${user.data().display_name}! No Bites have recently been opened, you can use the create command to start a new Bite or say start to order from older Bites. </speak>`;
-            } else {
-                speech = `<speak> Welcome ${user.data().display_name}!` + message + ` do you want to place an order here?.</speak>`;
-            }
-            assistant.ask(speech);
-        } else {
-            assistant.setContext("user_order", 2);
-            assistant.setContext("edit_order", 2);
-            assistant.data = { username: user.data().display_name, userkey: userKey };
-
-            const speech = `<speak> Welcome ${user.data().display_name}! You have ${amountOfOrders} open order(s) at ${storeNames.toString()}.<break time="1"/>` +
-                `Would you like to edit a current order or start another?</speak>`;
-            assistant.ask(speech);
-        }
-    }
 };
 
 function getOrder(user, store) {

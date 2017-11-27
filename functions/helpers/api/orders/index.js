@@ -10,8 +10,10 @@ const ordersRef = admin.firestore().collection('orders');
 function getOpenOrders() {
   let docID;
   let snacks = [];
-  return ordersRef.where('status', '==', 'open').where('store', '==', 0).get()
+  return ordersRef.where('status', '==', 'open').where('store', '==', "0").get()
       .then(snapshot => {
+        console.log(snapshot.docs.length);
+        console.log(snapshot.size);
           snapshot.forEach(doc => {
               docID = doc.id;
           });

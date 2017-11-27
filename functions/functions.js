@@ -3,7 +3,7 @@ process.env.DEBUG = 'actions-on-google:*';
 
 const functions = require('firebase-functions');
 
-//firebase database refs
+//firebase database ref
 const admin = require('firebase-admin');
 admin.initializeApp(functions.config().firebase);
 
@@ -21,7 +21,10 @@ moment().format();
 
 
 /*
-Login
+Checks the database to see if the user already has an account, this is done by comparing the access tokens
+Performs a https request to get the current user's information if the access token did not match any in the database.
+Updates the access token in the database
+Calls the getUserOrder function on succesfull authentication
 */
 exports.biteUser = (assistant) => {
     //OAUTH SIGNIN 
@@ -98,7 +101,7 @@ exports.biteUser = (assistant) => {
 };
 
 /*
-getOrderLocation
+Checks if there are any open Bites in the specified location
 */
 exports.biteLocation = (assistant) => {
     const locationContext = assistant.getArgument("Location");
@@ -127,10 +130,8 @@ exports.biteLocation = (assistant) => {
 };
 
 /*
-function to retrieve the items in the user's order.
-Since this happens in the same place, editing an order also happens in this function if the right context parameters are set.
-add/edit: snackContext contains "add", "snack" & "amount"
-remove/edit: snackContext contains "remove", "snack" & "amount" 
+Saying: "Edit <STORE>" responds with the user's order in that store, listing all snacks with amount and the total price
+Saying: "Add/Remove <SNACK>" after the first response or after quickOrder will update the snack amounts/ remove the snack entirely or add a new snack
 */
 exports.getUserOrderItems = (assistant) => {
     //get the arguments from the user, can be empty
@@ -265,6 +266,12 @@ exports.getUserOrderItems = (assistant) => {
     }
 };
 
+/*
+The easiest way to place an order
+Can be performed at any point in the conversation
+Adds the snacks to the order at the specified shop
+Also works if the user already has an order at that store, in that case it simply updates the amount
+*/
 exports.quickOrder = (assistant) => {
 
     let snackCount = 0;
@@ -367,7 +374,11 @@ exports.quickOrder = (assistant) => {
     }
 };
 
-//Create/Delete a Bite
+/*
+Lets an user open or close a Bite
+Anyone can open a Bite
+A Bite cannot be closed from a Google Home device, to prevent unauthorized people from closing it.
+*/
 exports.AdminFunctions = (assistant) => {
 
     //check if the device is a phone
@@ -415,7 +426,7 @@ exports.AdminFunctions = (assistant) => {
                             location: doc.data().location,
                             opened_by: userkey,
                             status: "open",
-                            store: storeContext,
+                            store: parseInt(storeContext),
                             storename: doc.data().name
                         }).then(() => {
                             speech = `<speak> I’ve opened a Bite for ${doc.data().name} in ${doc.data().location}. The Bite will be open for 30 minutes so hurry up and place your orders!  </speak>`;
@@ -429,6 +440,9 @@ exports.AdminFunctions = (assistant) => {
         })
 };
 
+/*
+Locks the user's order
+*/
 exports.lockOrder = (assistant) => {
     //get the arguments from the user query
     const storeContext = assistant.getArgument("store");
@@ -458,6 +472,9 @@ exports.lockOrder = (assistant) => {
         })
 };
 
+/*
+Responds with the amount of users in an order and shows how many of them have their order locked in
+*/
 exports.finishOrder = (assistant) => {
     //get the arguments from the user query
     const storeContext = assistant.getArgument("store");
@@ -506,6 +523,9 @@ exports.finishOrder = (assistant) => {
         })
 };
 
+/*
+responds with the total combined order for a single store
+*/
 exports.listTotalOrder = (assistant) => {
 
     const storeContext = assistant.data.userStore; //get the store that was saved during finishOrder();
@@ -542,11 +562,12 @@ exports.listTotalOrder = (assistant) => {
                                 orderString += `<say-as interpret-as="cardinal">` + amountArray[i] + "</say-as> " + nameArray[i] + ", ";
                             }
                             if (count != 0) {
-                                speech = `<speak> The combined order of all users consists of: ${orderString} with a total cost of <say-as interpret-as="currency">EUR${orderprice / 100}</say-as>. </speak>`;
+                                speech = `<speak> The combined order of all users consists of: ${orderString} with a total cost of <say-as interpret-as="currency">EUR${orderprice / 100}</say-as>. Maybe you should place the order! </speak>`;
+                                assistant.tell(speech);
                             } else {
                                 speech = `<speak> Oops, something went wrong, try again for a different store.  </speak>`;
+                                assistant.ask(speech);
                             }
-                            assistant.ask(speech);
                         }
                     })
                 })
@@ -557,6 +578,11 @@ exports.listTotalOrder = (assistant) => {
         })
 }
 
+/*
+Gets all synonyms for a certain snack
+Adds the user's spoken synonym to the list
+Updates Dialogflow with the new synonyms
+*/
 exports.learnMode = (assistant) => {
 
     let snack = assistant.getArgument("snack");
@@ -671,12 +697,15 @@ exports.learnMode = (assistant) => {
     }
 };
 
+/* 
+                                                    PRIVATE FUNCTIONS
+    these functions are only used by the export functions in this file and are not directly connected to a Dialogflow Action
+*/
+
 /*
-private function getUserOrders
-get open orders for the user, handles part of the welcome intent and- 
-saves the array with database references of the users Bite order in assistant.data.userOrders
-example: [ 'user_order/-KorC-i_WY5CsFct9ncd/3fKhikTWsWAd2ZyU2UybQrvU2fz2' ] supports multiple user orders
-              TABLE  /     (OPEN)BITE     /            USER               / ORDERS
+Handles the welcome intent after the user is authenticated
+Checks the database to see if the user already has an order or if a Bite opened today.
+Builds a response and sets the right contexts
 */
 function getUserOrder(assistant, user) {
 
@@ -746,6 +775,7 @@ function getUserOrder(assistant, user) {
         })
 };
 
+//returns all items in an user's order
 function getOrder(user, store) {
 
     let snacks = [];
@@ -767,6 +797,7 @@ function getOrder(user, store) {
         })
 }
 
+//returns a single product key and information
 function getProduct(store, productName) {
     let i;
     return FS_Stores.doc(store).collection('products').where('name', '==', productName).get()
@@ -777,6 +808,8 @@ function getProduct(store, productName) {
             return i;
         })
 }
+
+//returns the database ID of the open Bite for the given store
 function getSingleStore(store) {
     let docID
     return FS_Orders.where('status', '==', 'open').where('store', '==', parseInt(store)).get()

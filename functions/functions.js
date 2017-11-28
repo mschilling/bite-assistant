@@ -19,7 +19,6 @@ const FS_Users = db.collection('users');
 var moment = require('moment');
 moment().format();
 
-
 /*
 Checks the database to see if the user already has an account, this is done by comparing the access tokens
 Performs a https request to get the current user's information if the access token did not match any in the database.
@@ -164,12 +163,15 @@ exports.getUserOrderItems = (assistant) => {
             if (check == 1) {
                 speech = `<speak> your order contains: ${amountAndSnacks} with a total price of` +
                     `<say-as interpret-as="currency">EUR${totalPrice / 100}</say-as>. You can add and remove items from your order, or lock it when you're done.` +
-                    `</speak>`
+                    `</speak>`;
+                return assistant.ask(assistant.buildRichResponse()
+                    .addSimpleResponse({ speech })
+                    .addSuggestions(['lock', 'add', 'remove', 'Never mind'])
+                );
             } else {
-                speech = `<speak> You don't have an order to edit for this store, try again for a different store. </speak>`
+                speech = `<speak> You don't have an order to edit for this store, try again for a different store. </speak>`;
+                assistant.ask(speech)
             }
-
-            assistant.ask(speech)
         })
     } else { //the add/remove part
         Store = assistant.data.userStore;
@@ -258,7 +260,11 @@ exports.getUserOrderItems = (assistant) => {
         if (checkOrder == 1) {
             speech = `<speak> ${change} ${amountAndSnacks} ${amountAndSnacksFail}` +
                 `You can add and remove items from your order, or lock it when you're done.` +
-                `</speak>`
+                `</speak>`;
+            return assistant.ask(assistant.buildRichResponse()
+                .addSimpleResponse({ speech })
+                .addSuggestions(['lock', 'add', 'remove', 'Never mind'])
+            );
         } else {
             speech = `<speak>${amountAndSnacksFail} was not found in this store, try ordering from a different store.</speak>`
         }
@@ -370,7 +376,10 @@ exports.quickOrder = (assistant) => {
         //allow editing of the order
         assistant.setContext("edit_order", 2);
         let speech = `<speak> Added ${snackString} you can add and remove items, or lock the order when you're done.</speak>`;
-        assistant.ask(speech);
+        assistant.ask(assistant.buildRichResponse()
+            .addSimpleResponse({ speech })
+            .addSuggestions(['lock', 'add ', 'remove', 'Never mind'])
+        );
     }
 };
 
@@ -445,7 +454,10 @@ Locks the user's order
 */
 exports.lockOrder = (assistant) => {
     //get the arguments from the user query
-    const storeContext = assistant.getArgument("store");
+    let storeContext = assistant.getArgument("store");
+    if (!storeContext) {
+        storeContext = assistant.data.userStore;
+    }
 
     //get the userID
     let userkey = assistant.data.userkey;
@@ -456,16 +468,17 @@ exports.lockOrder = (assistant) => {
         .then(snapshot => {
             snapshot.forEach(doc => {
                 FS_Orders.doc(doc.id).collection("orders").doc(userkey).get()
-                    .then(doc => {
-                        if (!doc.exists) {
+                    .then(user_order => {
+                        if (!user_order.exists) {
                             speech = `<speak> Sorry, I couldn't lock your order. You can try for a different store.  </speak>`;
                             assistant.ask(speech);
                         } else {
-                            FS_Orders.doc(doc.id).collection("orders").doc(userkey).update({
+                            FS_Orders.doc(doc.id).collection("orders").doc(userkey).set({
                                 locked: true
+                            }).then(() => {
+                                speech = `<speak> Your order has been locked! Thanks for ordering with Bite!</speak>`;
+                                assistant.tell(speech);
                             })
-                            speech = `<speak> Your order has been locked! Thanks for ordering with Bite!</speak>`;
-                            assistant.tell(speech);
                         }
                     })
             })
@@ -690,7 +703,7 @@ exports.learnMode = (assistant) => {
             req.write(body);
             req.end();
 
-            speech = `<speak> added your pronounciation: ${text} as a synonym for ${snack} </speak>`;
+            speech = `<speak> added your pronounciation: ${text} as a synonym for ${snack}. Anything else you want to do? </speak>`;
             assistant.ask(speech);
             assistant.data = { text: null };
         }
@@ -737,8 +750,10 @@ function getUserOrder(assistant, user) {
                     FS_Orders.doc(stores[i].id.toString()).collection('orders').doc(userKey).get()
                         .then(doc => {
                             if (doc.exists) {
-                                amountOfOrders++; //+1 order
-                                storeNames.push(stores[i].data().storename);
+                                if (doc.data().locked == false) {
+                                    amountOfOrders++; //+1 order
+                                    storeNames.push(stores[i].data().storename);
+                                }
                             }
                             amount++;
                             if (amount === stores.length) {
@@ -753,7 +768,10 @@ function getUserOrder(assistant, user) {
                                     } else {
                                         speech = `<speak> Welcome ${user.data().display_name}!` + message + ` do you want to place an order here?.</speak>`;
                                     }
-                                    assistant.ask(speech);
+                                    assistant.ask(assistant.buildRichResponse()
+                                        .addSimpleResponse({ speech })
+                                        .addSuggestions(['order', 'create ', 'start', 'Never mind'])
+                                    );
                                 } else {
                                     assistant.setContext("user_order", 2);
                                     assistant.setContext("edit_order", 2);
@@ -761,7 +779,10 @@ function getUserOrder(assistant, user) {
 
                                     const speech = `<speak> Welcome ${user.data().display_name}! You have ${amountOfOrders} open order(s) at ${storeNames.toString()}.<break time="1"/>` +
                                         `Would you like to edit a current order or start another?</speak>`;
-                                    assistant.ask(speech);
+                                    assistant.ask(assistant.buildRichResponse()
+                                        .addSimpleResponse({ speech })
+                                        .addSuggestions(['edit', 'create a bite', 'start', 'Never mind'])
+                                    );
                                 }
                             }
                         })
@@ -770,7 +791,10 @@ function getUserOrder(assistant, user) {
                 assistant.setContext("user_order", 5);
                 assistant.data = { username: user.data().display_name, userkey: userKey };
                 speech = `<speak> Welcome ${user.data().display_name}! No Bites have recently been opened, you can use the create command to start a new Bite. </speak>`;
-                assistant.ask(speech);
+                assistant.ask(assistant.buildRichResponse()
+                    .addSimpleResponse({ speech })
+                    .addSuggestions(['create', 'Never mind'])
+                );
             }
         })
 };

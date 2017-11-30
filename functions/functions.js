@@ -51,7 +51,7 @@ exports.biteUser = (assistant) => {
                 https.get('https://www.googleapis.com/plus/v1/people/me?access_token=' + accestoken, (resp) => {
                     let jsondata = '';
 
-                    // A chunk of data has been recieved.
+                    // A chunk of data has been recieved.   
                     resp.on('data', (chunk) => {
                         jsondata += chunk;
                     });
@@ -291,7 +291,8 @@ exports.quickOrder = (assistant) => {
     const snackContext = assistant.getArgument("snack");
     let amountContext = assistant.getArgument("number");
     let storeContext = assistant.getArgument("store");
-    console.log("Change: " + changeContext + ", Snack: " + snackContext + ", Amount: " + amountContext + ", Store: " + storeContext);
+    let sauceContext = assistant.getArgument("sauce");
+    console.log("Change: " + changeContext + ", Snack: " + snackContext + ", Amount: " + amountContext + ", Store: " + storeContext + ", Sauce: " + sauceContext);
     if (changeContext == "remove") {
         return assistant.ask(`<speak> You need to be in edit mode to remove an item, try saying edit, followed by your store of choice. </speak>`)
     }
@@ -329,6 +330,12 @@ exports.quickOrder = (assistant) => {
                                                     name: item.data().name,
                                                     price: (item.data().price * amountContext[snackContext.indexOf(entry)])
                                                 });
+                                                console.log(sauceContext[snackCount]);
+                                                if (sauceContext[snackCount] && sauceContext[snackCount] != "no") {
+                                                    FS_Orders.doc(id).collection('orders').doc(userKey).collection('sauces').doc(sauceContext[snackCount].toString()).set({
+                                                        name: sauceContext[snackCount]
+                                                    });
+                                                }
                                                 snackString += `<say-as interpret-as="cardinal">${amountContext[snackContext.indexOf(entry)]}</say-as> ${item.data().name}, `;
                                                 snackCount++;
                                                 if (snackCount == snackContext.length) {
@@ -345,6 +352,12 @@ exports.quickOrder = (assistant) => {
                                                                 name: item.data().name,
                                                                 price: (item.data().price * amountContext[snackContext.indexOf(entry)])
                                                             });
+                                                            console.log(sauceContext[snackCount]);
+                                                            if (sauceContext[snackCount] && sauceContext[snackCount] != "no") {
+                                                                FS_Orders.doc(id).collection('orders').doc(userKey).collection('sauces').doc(sauceContext[snackCount].toString()).set({
+                                                                    name: sauceContext[snackCount]
+                                                                });
+                                                            }
                                                             snackString += `<say-as interpret-as="cardinal">${amountContext[snackContext.indexOf(entry)]}</say-as> ${item.data().name}, `;
                                                         } else {
                                                             FS_Orders.doc(id).collection('orders').doc(userKey).collection('snacks').doc(item.id).update({
@@ -352,6 +365,12 @@ exports.quickOrder = (assistant) => {
                                                                 name: item.data().name,
                                                                 price: (item.data().price * (amountContext[snackContext.indexOf(entry)] + currentItem.data().amount))
                                                             });
+                                                            console.log(sauceContext[snackCount]);
+                                                            if (sauceContext[snackCount] && sauceContext[snackCount] != "no") {
+                                                                FS_Orders.doc(id).collection('orders').doc(userKey).collection('sauces').doc(sauceContext[snackCount].toString()).set({
+                                                                    name: sauceContext[snackCount]
+                                                                });
+                                                            }
                                                             snackString += `<say-as interpret-as="cardinal">${amountContext[snackContext.indexOf(entry)]}</say-as> ${item.data().name}, `;
                                                         }
                                                         snackCount++;
@@ -788,6 +807,9 @@ function getUserOrder(assistant, user) {
                         })
                 }
             } else {
+                if (user.data().admin) {
+                    assistant.setContext("admin", 10);
+                }
                 assistant.setContext("user_order", 5);
                 assistant.data = { username: user.data().display_name, userkey: userKey };
                 speech = `<speak> Welcome ${user.data().display_name}! No Bites have recently been opened, you can use the create command to start a new Bite. </speak>`;

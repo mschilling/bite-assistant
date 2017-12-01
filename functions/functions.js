@@ -469,45 +469,58 @@ exports.AdminFunctions = (assistant) => {
 
     FS_Orders.where('status', '==', 'open').where('store', '==', parseInt(storeContext)).get()
         .then(snapshot => {
-            snapshot.forEach(doc => {
-                if (changeContext == "remove" || changeContext == "close") {
-                    if (hasScreen) {
-                        if (assistant.data.userkey == doc.data().opened_by || assistant.getContext("admin")) {
-                            FS_Orders.doc(doc.id).update({
-                                status: "closed"
-                            });
-                            speech = `<speak> The ${doc.data().storename} Bite has been closed. Anything else? </speak>`;
+            if (snapshot.size > 0) {
+                snapshot.forEach(doc => {
+                    if (changeContext == "remove" || changeContext == "close") {
+                        if (hasScreen) {
+                            if (assistant.data.userkey == doc.data().opened_by || assistant.getContext("admin")) {
+                                checkforUsers(storeContext).then(orderAmount => {
+                                    if (orderAmount > 0) {
+                                        //"archive" the bite(close it)
+                                        FS_Orders.doc(doc.id).update({
+                                            status: "closed"
+                                        });
+                                        speech = `<speak> The ${doc.data().storename} Bite has been closed. Anything else? </speak>`;
+                                    } else {
+                                        //There are no orders in this Bite so lets just delete it
+                                        FS_Orders.doc(doc.id).delete();
+                                        speech = `<speak> The ${doc.data().storename} Bite has been DELETED since no orders were found in it. Anything else? </speak>`;
+                                        return assistant.ask(speech);
+                                    }
+                                })
+                            } else {
+                                speech = `<speak> The ${doc.data().storename} Bite has been closed. Anything else? </speak>`;
+                                return assistant.ask(speech);
+                            }
                         }
+                    } else {
+                        speech = `<speak> There is already an open Bite for this store. Try for another store!  </speak>`;
+                        return assistant.ask(speech);
                     }
-                } else {
-                    speech = `<speak> There is already an open Bite for this store, please choose another store. </speak>`;
-                }
-                ordercheck = 1;
-                assistant.ask(speech);
-            });
-            return ordercheck;
-        }).then(ordercheck => {
-            if (ordercheck == 0 && changeContext == "add") {
-                FS_Stores.doc(storeContext).get()
-                    .then(doc => {
-                        let now = new Date();
-                        FS_Orders.doc((storeContext + now.setMinutes(now.getMinutes() + 0)).toString()).set({
-                            open_time: now.setMinutes(now.getMinutes() + 0),
-                            close_time: now.setMinutes(now.getMinutes() + 30),
-                            duration: 30,
-                            location: doc.data().location,
-                            opened_by: userkey,
-                            status: "open",
-                            store: parseInt(storeContext),
-                            storename: doc.data().name
-                        }).then(() => {
-                            speech = `<speak> I’ve opened a Bite for ${doc.data().name} in ${doc.data().location}. The Bite will be open for 30 minutes so hurry up and place your orders!  </speak>`;
-                            return assistant.tell(speech);
-                        })
-                    })
+                });
             } else {
-                speech = `<speak> There is no open Bite for this store, try for another store! </speak>`;
-                return assistant.ask(speech);
+                if (changeContext == "add") {
+                    FS_Stores.doc(storeContext).get()
+                        .then(doc => {
+                            let now = new Date();
+                            FS_Orders.doc((storeContext + now.setMinutes(now.getMinutes() + 0)).toString()).set({
+                                open_time: now.setMinutes(now.getMinutes() + 0),
+                                close_time: now.setMinutes(now.getMinutes() + 30),
+                                duration: 30,
+                                location: doc.data().location,
+                                opened_by: userkey,
+                                status: "open",
+                                store: parseInt(storeContext),
+                                storename: doc.data().name
+                            }).then(() => {
+                                speech = `<speak> I’ve opened a Bite for ${doc.data().name} in ${doc.data().location}. The Bite will be open for 30 minutes so hurry up and place your orders!  </speak>`;
+                                return assistant.tell(speech);
+                            })
+                        })
+                } else {
+                    speech = `<speak> There is no open Bite for this store, try for another store! </speak>`;
+                    return assistant.ask(speech);
+                }
             }
         })
 };
@@ -567,36 +580,34 @@ exports.finishOrder = (assistant) => {
 
     //get the open Bite for the selected store
     //get all user orders and check if they are locked
-    FS_Orders.where('status', '==', 'open').where('store', '==', parseInt(storeContext)).get()
-        .then(snapshot => {
-            if (snapshot.size > 0) {
-                snapshot.forEach(doc => {
-                    FS_Orders.doc(doc.id).collection("orders").get()
-                        .then(userOrders => {
-                            userOrders.forEach(userOrder => {
-                                saveOrder = doc.id;
-                                users++;
-                                if (userOrder.data().locked == true) {
-                                    lockedUsers++;
-                                }
-                            })
-                        }).then(() => {
-                            assistant.data = { userStore: storeContext, saveOrder: saveOrder, userkey: userkey };
-                            if (users == lockedUsers && users != 0) {
-                                speech = `<speak> All ${users} user(s) have locked their order. Do you want me to tell you the total list of orders?</speak>`;
-                            } else if (users != 0) {
-                                speech = `<speak> ${lockedUsers} out of ${users} user(s) have locked their order. Want to hear all orders? </speak>`;
-                            } else {
-                                speech = `<speak> This Bite doesn't have any orders yet, maybe you should place the first one! </speak>`;
-                            }
-                            assistant.ask(speech);
-                        })
+    getSingleStore(storeContext).then(doc => {
+        console.log(doc);
+        if (doc) {
+            FS_Orders.doc(doc.toString()).collection("orders").get()
+                .then(userOrders => {
+                    userOrders.forEach(userOrder => {
+                        saveOrder = doc;
+                        users++;
+                        if (userOrder.data().locked == true) {
+                            lockedUsers++;
+                        }
+                    })
+                }).then(() => {
+                    assistant.data = { userStore: storeContext, saveOrder: saveOrder, userkey: userkey };
+                    if (users == lockedUsers && users != 0) {
+                        speech = `<speak> All ${users} user(s) have locked their order. Do you want me to tell you the total list of orders?</speak>`;
+                    } else if (users != 0) {
+                        speech = `<speak> ${lockedUsers} out of ${users} user(s) have locked their order. Want to hear all orders? </speak>`;
+                    } else {
+                        speech = `<speak> This Bite doesn't have any orders yet, maybe you should place the first one! </speak>`;
+                    }
+                    assistant.ask(speech);
                 })
-            } else {
-                speech = `<speak> There is no open Bite for this store, try starting one! </speak>`;
-                assistant.ask(speech);
-            }
-        })
+        } else {
+            speech = `<speak> There is no open Bite for this store, try starting one! </speak>`;
+            assistant.ask(speech);
+        }
+    })
 };
 
 /*
@@ -800,8 +811,9 @@ function getUserOrder(assistant, user) {
         .then(snapshot => {
             snapshot.forEach(doc => {
                 if (moment().isSame(moment(doc.data().open_time), 'day')) {
-                    todayHasBite = true
+                    todayHasBite = true;
                     message += doc.data().storename + ", ";
+                    storeNames.push(doc.data().storename);
                 }
                 stores.push(doc);
             });
@@ -810,48 +822,49 @@ function getUserOrder(assistant, user) {
             if (stores.length != 0) {
                 let amount = 0;
                 for (let i = 0; i < stores.length; i++) {
-                    FS_Orders.doc(stores[i].id.toString()).collection('orders').doc(userKey).get()
-                        .then(doc => {
-                            if (doc.exists) {
-                                if (doc.data().locked == false) {
-                                    amountOfOrders++; //+1 order
-                                    storeNames.push(stores[i].data().storename);
-                                }
+                    getLocked(userKey, stores[i].data().store).then(lockedStatus => {
+                        if (lockedStatus == false) {
+                            amountOfOrders++; //+1 order
+                            storeNames.push(stores[i].data().storename);
+                        }
+                        amount++;
+                        if (amount === stores.length) {
+                            if (user.data().admin) {
+                                assistant.setContext("admin", 10);
                             }
-                            amount++;
-                            if (amount === stores.length) {
-                                if (user.data().admin) {
-                                    assistant.setContext("admin", 10);
-                                }
-                                if (amountOfOrders == 0) {
-                                    assistant.setContext("user_order", 5);
-                                    assistant.data = { username: user.data().display_name, userkey: userKey };
-                                    if (!todayHasBite) {
-                                        speech = `<speak> Welcome ${user.data().display_name}! No Bites have recently been opened, you can use the create command to start a new Bite or say start to order from older Bites. </speak>`;
-                                    } else {
-                                        speech = `<speak> Welcome ${user.data().display_name}!` + message + ` do you want to place an order here?.</speak>`;
-                                    }
+                            if (amountOfOrders == 0) {
+                                assistant.setContext("user_order", 5);
+                                assistant.data = { username: user.data().display_name, userkey: userKey };
+                                if (!todayHasBite) {
+                                    speech = `<speak> Welcome ${user.data().display_name}! No Bites have recently been opened, you can use the create command to start a new Bite or say start to order from older Bites. </speak>`;
                                     assistant.ask(assistant.buildRichResponse()
                                         .addSimpleResponse({ speech })
                                         .addSuggestions(['order', 'create ', 'start', 'Never mind'])
                                     );
                                 } else {
-                                    assistant.setContext("user_order", 2);
-                                    assistant.setContext("edit_order", 2);
-                                    assistant.data = { username: user.data().display_name, userkey: userKey };
-
-                                    const speech = `<speak> Welcome ${user.data().display_name}! You have ${amountOfOrders} open order(s) at ${storeNames.toString()}.<break time="1"/>` +
-                                        `Would you like to edit a current order or start another?</speak>`;
+                                    speech = `<speak> Welcome ${user.data().display_name}!` + message + ` do you want to place an order here?.</speak>`;
                                     assistant.ask(assistant.buildRichResponse()
                                         .addSimpleResponse({ speech })
-                                        .addSuggestions(['edit ' + storeNames[0], 'create a bite', 'start', 'Never mind'])
+                                        .addSuggestions(['order from ' + storeNames[0], 'create ', 'start', 'Never mind'])
                                     );
                                 }
+                            } else {
+                                assistant.setContext("user_order", 2);
+                                assistant.setContext("edit_order", 2);
+                                assistant.data = { username: user.data().display_name, userkey: userKey };
+
+                                const speech = `<speak> Welcome ${user.data().display_name}! You have ${amountOfOrders} open order(s) at ${storeNames.toString()}.<break time="1"/>` +
+                                    `Would you like to edit a current order or start another?</speak>`;
+                                assistant.ask(assistant.buildRichResponse()
+                                    .addSimpleResponse({ speech })
+                                    .addSuggestions(['edit ' + storeNames[0], 'create a bite', 'start', 'Never mind'])
+                                );
                             }
-                        })
+                        }
+                    })
                 }
             } else {
-                if (user.data().admin) {
+                if (user.data().admin == true) {
                     assistant.setContext("admin", 10);
                 }
                 assistant.setContext("user_order", 5);
@@ -901,12 +914,16 @@ function getProduct(store, productName) {
 
 //returns the database ID of the open Bite for the given store
 function getSingleStore(store) {
-    let docID
+    let docID;
     return FS_Orders.where('status', '==', 'open').where('store', '==', parseInt(store)).get()
         .then(snapshot => {
-            snapshot.forEach(doc => {
-                docID = doc.id;
-            });
+            if (snapshot.size > 0) {
+                snapshot.forEach(doc => {
+                    docID = doc.id;
+                });
+            } else {
+                docID = false;
+            }
             return docID;
         })
 }
@@ -923,14 +940,36 @@ function getLocked(user, store) {
             });
             return docID;
         }).then(snapshot => {
-            return FS_Orders.doc(snapshot.toString()).collection('orders').doc(user.toString()).get()
-                .then(doc => {
-                    if (!doc.exists) {
-                        locked = true;
-                    } else {
-                        locked = doc.data().locked;
-                    }
-                    return locked;
-                })
+            if (snapshot) {
+                return FS_Orders.doc(snapshot.toString()).collection('orders').doc(user.toString()).get()
+                    .then(doc => {
+                        if (!doc.exists) {
+                            locked = true;
+                        } else {
+                            locked = doc.data().locked;
+                        }
+                        return locked;
+                    })
+            } else {
+                return true;
+            }
         })
+}
+
+//returns the amount of users that placed an order at the specified Bite
+function checkforUsers(store) {
+    let users = 0;
+    return getSingleStore(store).then(doc => {
+        if (doc) {
+            return FS_Orders.doc(doc.toString()).collection("orders").get()
+                .then(userOrders => {
+                    userOrders.forEach(userOrder => {
+                        users++;
+                    })
+                    return users;
+                })
+        } else {
+            return users;
+        }
+    })
 }

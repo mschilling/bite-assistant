@@ -24,18 +24,18 @@ exports.switchScreen = (assistant) => {
         if (!assistant.isNewSurface()) {
             assistant.tell("I found no screen.");
         } else {
-            assistant.ask("placeholder information");
+            assistant.ask("Hey, Bite here. So we switched to a phone, now what do you want to do?");
         }
     } else if (assistant.hasAvailableSurfaceCapabilities(assistant.SurfaceCapabilities.SCREEN_OUTPUT)) {
         try {
-            let res = assistant.askForNewSurface("To display additional content", "Do you want proceed on this screen ?", [assistant.SurfaceCapabilities.SCREEN_OUTPUT]);
+            let res = assistant.askForNewSurface("Bite Service on a screen", "Continue talking to Bite service", [assistant.SurfaceCapabilities.SCREEN_OUTPUT]);
             console.log(res);
         } catch (e) {
             console.error("ERROR askForNewSurface()");
             console.log(e);
         }
     } else {
-        assistant.tell("Sorry i found no screen");
+        assistant.tell("Sorry I found no screen");
     }
 }
 /*
@@ -106,7 +106,7 @@ exports.biteUser = (assistant) => {
                                                 photo_url: parsedData.image.url
                                             });
 
-                                            assistant.data = {key: newPostRef.key};
+                                            assistant.data = { userkey: newPostRef.key };
 
                                             let namePermission = assistant.SupportedPermissions.NAME;
                                             // Ask for name permission since the google+ api often doesn't return the name
@@ -118,7 +118,7 @@ exports.biteUser = (assistant) => {
                                 assistant.tell(speech);
                             }
                         } else {
-                            speech = `<speak> Something went wrong. If this problem persists, visit https://myaccount.google.com/permissions to revoke access to this app. It may take up to a few hours for the changes to take effect. </speak>`;
+                            speech = `<speak> Something went wrong. If this problem persists, try unlinking the app through the app store. </speak>`;
                             assistant.tell(speech);
                         }
                     });
@@ -137,15 +137,16 @@ gets the name from permissions and adds it to the database
 exports.signup = (assistant) => {
     if (assistant.isPermissionGranted()) {
         let displayName = assistant.getUserName().displayName;
-        let key = assistant.data.key;
+        let key = assistant.data.userkey;
         db.collection('users').doc(key).update({
             display_name: displayName
         });
         assistant.tell(`Hello ${displayName} and welcome to Bite. You can start the Bite app again to start ordering.`);
-    }else{
+    } else {
         assistant.tell(`You didn't grant permission, You'll be called NEW USER forever!`);
     }
 }
+
 /*
 Checks if there are any open Bites in the specified location
 */

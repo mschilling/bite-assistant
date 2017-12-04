@@ -1,5 +1,4 @@
 'use strict';
-process.env.DEBUG = 'actions-on-google:*';
 
 const functions = require('firebase-functions');
 
@@ -19,6 +18,26 @@ const FS_Users = db.collection('users');
 var moment = require('moment');
 moment().format();
 
+
+exports.switchScreen = (assistant) => {
+    if (assistant.hasSurfaceCapability(assistant.SurfaceCapabilities.SCREEN_OUTPUT)) {
+        if (!assistant.isNewSurface()) {
+            assistant.tell("I found no screen.");
+        } else {
+            assistant.ask("placeholder information");
+        }
+    } else if (assistant.hasAvailableSurfaceCapabilities(assistant.SurfaceCapabilities.SCREEN_OUTPUT)) {
+        try {
+            let res = assistant.askForNewSurface("To display additional content", "Do you want proceed on this screen ?", [assistant.SurfaceCapabilities.SCREEN_OUTPUT]);
+            console.log(res);
+        } catch (e) {
+            console.error("ERROR askForNewSurface()");
+            console.log(e);
+        }
+    } else {
+        assistant.tell("Sorry i found no screen");
+    }
+}
 /*
 Checks the database to see if the user already has an account, this is done by comparing the access tokens
 Performs a https request to get the current user's information if the access token did not match any in the database.
@@ -62,23 +81,36 @@ exports.biteUser = (assistant) => {
                         console.log(parsedData);
                         if (parsedData.emails) {
                             //check if the user is using a move4mobile google account
+                            //remove this line if you just want to check if the email matches with the one in the database
                             if (parsedData.domain == "move4mobile.com" || parsedData.emails[0].value == "biteexample@gmail.com") {
                                 let emailQuery = FS_Users.where('email', '==', parsedData.emails[0].value).get()
                                     .then(snapshot => {
-                                        snapshot.forEach(doc => {
-                                            console.log(doc.id, '=>', doc.data());
-                                            assistant.data = { username: doc.data().display_name, userkey: doc.id };
-                                            userData = doc;
-                                            db.collection('users').doc(doc.id).update({ access_token: accestoken });
-                                            i = 1;
-                                        });
-                                        if (i == 1) {
-                                            //get the users current open orders and finish the welcome intent
-                                            getUserOrder(assistant, userData);
+                                        if (snapshot.size > 0) {
+                                            snapshot.forEach(doc => {
+                                                console.log(doc.id, '=>', doc.data());
+                                                assistant.data = { username: doc.data().display_name, userkey: doc.id };
+                                                userData = doc;
+                                                db.collection('users').doc(doc.id).update({ access_token: accestoken });
+
+                                                //get the users current open orders and finish the welcome intent
+                                                getUserOrder(assistant, userData);
+                                            });
                                         } else {
-                                            speech = `<speak> I couldn't find an account for this email.</speak>`;
-                                            assistant.tell(speech);
-                                            //TODO: Create the user account
+                                            //move4mobile email but without an account, create a new account
+                                            //name can be empty
+                                            let newPostRef = db.collection('users').doc().push({
+                                                access_token: accestoken,
+                                                admin: false,
+                                                display_name: "NEW USER",
+                                                email: parsedData.emails[0].value,
+                                                photo_url: parsedData.image.url
+                                            });
+
+                                            assistant.data = {key: newPostRef.key};
+
+                                            let namePermission = assistant.SupportedPermissions.NAME;
+                                            // Ask for name permission since the google+ api often doesn't return the name
+                                            assistant.askForPermission('Looks like you\'re new to Bite. To sign you up', namePermission);
                                         }
                                     })
                             } else {
@@ -100,6 +132,21 @@ exports.biteUser = (assistant) => {
 };
 
 /*
+gets the name from permissions and adds it to the database
+*/
+exports.signup = (assistant) => {
+    if (assistant.isPermissionGranted()) {
+        let displayName = assistant.getUserName().displayName;
+        let key = assistant.data.key;
+        db.collection('users').doc(key).update({
+            display_name: displayName
+        });
+        assistant.tell(`Hello ${displayName} and welcome to Bite. You can start the Bite app again to start ordering.`);
+    }else{
+        assistant.tell(`You didn't grant permission, You'll be called NEW USER forever!`);
+    }
+}
+/*
 Checks if there are any open Bites in the specified location
 */
 exports.biteLocation = (assistant) => {
@@ -120,11 +167,19 @@ exports.biteLocation = (assistant) => {
                 orderStore = `<break time="1"/>, you can order from ${storeNames.toString()} or open a Bite yourself`;
                 assistant.setContext("user_order", 2);
                 assistant.setContext("edit_order", 2);
+                speech = `<speak> there are currently ${storeNames.length} open bites in ${locationContext}` + orderStore + `</speak>`;
+                assistant.ask(assistant.buildRichResponse()
+                    .addSimpleResponse({ speech })
+                    .addSuggestions(['order from ' + storeNames[0], 'create ', 'start', 'Never mind'])
+                );
             } else {
                 orderStore = `<break time="1"/>. You can try ordering from another location, or start a Bite here yourself! `;
+                speech = `<speak> there are currently ${storeNames.length} open bites in ${locationContext}` + orderStore + `</speak>`;
+                assistant.ask(assistant.buildRichResponse()
+                    .addSimpleResponse({ speech })
+                    .addSuggestions(['create ', 'start', 'Never mind'])
+                );
             }
-            speech = `<speak> there are currently ${storeNames.length} open bites in ${locationContext}` + orderStore + `</speak>`;
-            assistant.ask(speech);
         })
 };
 
@@ -217,7 +272,7 @@ exports.getUserOrderItems = (assistant) => {
                                         checkOrder = 1;
 
                                     } else if (changeContext == "remove") {
-                                        //sets amount to 999 if it is 0
+                                        //sets amount to 999 if it is 0, remove all
                                         if (amountContext[i]) {
                                         } else {
                                             amountContext[i] = 999;
@@ -308,8 +363,9 @@ exports.quickOrder = (assistant) => {
     let snackCount = 0;
     let snackString = "";
     let userKey = assistant.data.userkey;
-    let storename;
     let id;
+    let checkOrder = 0;
+    let amountAndSnacksFail = "";
 
     //get the arguments from the user query
     const changeContext = assistant.getArgument("action");
@@ -325,14 +381,10 @@ exports.quickOrder = (assistant) => {
     getLocked(userKey, storeContext).then(locked => {
         if (locked == false) {
             //get the right open bite
-            let getOpenOrders = FS_Orders.where('status', '==', 'open').where('store', '==', parseInt(storeContext)).get()
-                .then(snapshot => {
-                    //should only ever return 1 store
-                    snapshot.forEach(doc => {
-                        storename = doc.data().storename;
-                        id = doc.id;
-                    })
-                    return id;
+            getSingleStore(storeContext)
+                .then(doc => {
+                    id = doc;
+                    return doc;
                 }).then(snapshot => {
                     if (snapshot) {
                         //check if the user already has an order at this bite
@@ -344,70 +396,78 @@ exports.quickOrder = (assistant) => {
                                     } else {
                                         amountContext[snackCount] = 1;
                                     }
-                                    let getProducts = FS_Stores.doc(storeContext.toString()).collection('products').where('name', '==', entry).limit(1).get()
-                                        .then(object => {
-                                            object.forEach(item => {
-                                                if (item) {
-                                                    if (!doc.exists) {
-                                                        FS_Orders.doc(id).collection('orders').doc(userKey).set({
-                                                            locked: false
+                                    getProduct(storeContext, entry)
+                                        .then(item => {
+                                            if (item) {
+                                                //check if the user has already placed an order at this store
+                                                if (!doc.exists) {
+                                                    //set locked
+                                                    FS_Orders.doc(id).collection('orders').doc(userKey).set({
+                                                        locked: false
+                                                    });
+                                                    //add snacks
+                                                    FS_Orders.doc(id).collection('orders').doc(userKey).collection('snacks').doc(item.id).set({
+                                                        amount: amountContext[snackContext.indexOf(entry)],
+                                                        name: item.data().name,
+                                                        price: (item.data().price * amountContext[snackContext.indexOf(entry)])
+                                                    });
+                                                    //add sauces
+                                                    if (sauceContext[snackCount] && sauceContext[snackCount] != "no") {
+                                                        FS_Orders.doc(id).collection('orders').doc(userKey).collection('sauces').doc(sauceContext[snackCount].toString()).set({
+                                                            name: sauceContext[snackCount]
                                                         });
-                                                        FS_Orders.doc(id).collection('orders').doc(userKey).collection('snacks').doc(item.id).set({
-                                                            amount: amountContext[snackContext.indexOf(entry)],
-                                                            name: item.data().name,
-                                                            price: (item.data().price * amountContext[snackContext.indexOf(entry)])
-                                                        });
-                                                        console.log(sauceContext[snackCount]);
-                                                        if (sauceContext[snackCount] && sauceContext[snackCount] != "no") {
-                                                            FS_Orders.doc(id).collection('orders').doc(userKey).collection('sauces').doc(sauceContext[snackCount].toString()).set({
-                                                                name: sauceContext[snackCount]
-                                                            });
-                                                        }
-                                                        snackString += `<say-as interpret-as="cardinal">${amountContext[snackContext.indexOf(entry)]}</say-as> ${item.data().name}, `;
-                                                        snackCount++;
-                                                        if (snackCount == snackContext.length) {
-                                                            return response();
-                                                        }
-                                                    } else {
-                                                        //check if the item is already in the user's order
-                                                        FS_Orders.doc(id).collection('orders').doc(userKey).collection('snacks').doc(item.id)
-                                                            .get()
-                                                            .then(currentItem => {
-                                                                if (!currentItem.exists) {
-                                                                    FS_Orders.doc(id).collection('orders').doc(userKey).collection('snacks').doc(item.id).set({
-                                                                        amount: amountContext[snackContext.indexOf(entry)],
-                                                                        name: item.data().name,
-                                                                        price: (item.data().price * amountContext[snackContext.indexOf(entry)])
-                                                                    });
-                                                                    console.log(sauceContext[snackCount]);
-                                                                    if (sauceContext[snackCount] && sauceContext[snackCount] != "no") {
-                                                                        FS_Orders.doc(id).collection('orders').doc(userKey).collection('sauces').doc(sauceContext[snackCount].toString()).set({
-                                                                            name: sauceContext[snackCount]
-                                                                        });
-                                                                    }
-                                                                    snackString += `<say-as interpret-as="cardinal">${amountContext[snackContext.indexOf(entry)]}</say-as> ${item.data().name}, `;
-                                                                } else {
-                                                                    FS_Orders.doc(id).collection('orders').doc(userKey).collection('snacks').doc(item.id).update({
-                                                                        amount: (amountContext[snackContext.indexOf(entry)] + currentItem.data().amount),
-                                                                        name: item.data().name,
-                                                                        price: (item.data().price * (amountContext[snackContext.indexOf(entry)] + currentItem.data().amount))
-                                                                    });
-                                                                    console.log(sauceContext[snackCount]);
-                                                                    if (sauceContext[snackCount] && sauceContext[snackCount] != "no") {
-                                                                        FS_Orders.doc(id).collection('orders').doc(userKey).collection('sauces').doc(sauceContext[snackCount].toString()).set({
-                                                                            name: sauceContext[snackCount]
-                                                                        });
-                                                                    }
-                                                                    snackString += `<say-as interpret-as="cardinal">${amountContext[snackContext.indexOf(entry)]}</say-as> ${item.data().name}, `;
-                                                                }
-                                                                snackCount++;
-                                                                if (snackCount == snackContext.length) {
-                                                                    return response();
-                                                                }
-                                                            })
                                                     }
+                                                    snackString += `<say-as interpret-as="cardinal">${amountContext[snackContext.indexOf(entry)]}</say-as> ${item.data().name}, `;
+                                                    snackCount++;
+                                                    checkOrder = 1;
+                                                    if (snackCount == snackContext.length) {
+                                                        return response();
+                                                    }
+                                                } else {
+                                                    //check if the item is already in the user's order
+                                                    FS_Orders.doc(id).collection('orders').doc(userKey).collection('snacks').doc(item.id).get()
+                                                        .then(currentItem => {
+                                                            if (!currentItem.exists) {
+                                                                FS_Orders.doc(id).collection('orders').doc(userKey).collection('snacks').doc(item.id).set({
+                                                                    amount: amountContext[snackContext.indexOf(entry)],
+                                                                    name: item.data().name,
+                                                                    price: (item.data().price * amountContext[snackContext.indexOf(entry)])
+                                                                });
+                                                                console.log(sauceContext[snackCount]);
+                                                                if (sauceContext[snackCount] && sauceContext[snackCount] != "no") {
+                                                                    FS_Orders.doc(id).collection('orders').doc(userKey).collection('sauces').doc(sauceContext[snackCount].toString()).set({
+                                                                        name: sauceContext[snackCount]
+                                                                    });
+                                                                }
+                                                                snackString += `<say-as interpret-as="cardinal">${amountContext[snackContext.indexOf(entry)]}</say-as> ${item.data().name}, `;
+                                                            } else {
+                                                                //item is already in the order, update the amount
+                                                                FS_Orders.doc(id).collection('orders').doc(userKey).collection('snacks').doc(item.id).update({
+                                                                    amount: (amountContext[snackContext.indexOf(entry)] + currentItem.data().amount),
+                                                                    name: item.data().name,
+                                                                    price: (item.data().price * (amountContext[snackContext.indexOf(entry)] + currentItem.data().amount))
+                                                                });
+                                                                console.log(sauceContext[snackCount]);
+                                                                if (sauceContext[snackCount] && sauceContext[snackCount] != "no") {
+                                                                    FS_Orders.doc(id).collection('orders').doc(userKey).collection('sauces').doc(sauceContext[snackCount].toString()).set({
+                                                                        name: sauceContext[snackCount]
+                                                                    });
+                                                                }
+                                                                snackString += `<say-as interpret-as="cardinal">${amountContext[snackContext.indexOf(entry)]}</say-as> ${item.data().name}, `;
+                                                            }
+                                                            snackCount++;
+                                                            checkOrder = 1;
+                                                            if (snackCount == snackContext.length) {
+                                                                return response();
+                                                            }
+                                                        })
                                                 }
-                                            })
+                                            } else {
+                                                amountAndSnacksFail += " could not add or remove " + entry + ", ";
+                                                if (i == snackContext.length - 1) {
+                                                    reponse();
+                                                }
+                                            }
                                         })
                                 })
                                 return doc;
@@ -432,12 +492,19 @@ exports.quickOrder = (assistant) => {
                     assistant.data = { userStore: storeContext };
                     //allow editing of the order
                     assistant.setContext("edit_order", 2);
-                    let speech = `<speak> Added ${snackString} Your order contains ${orderString} with a total price of <say-as interpret-as="currency">EUR${orderprice / 100}</say-as>. You can add and remove items, or lock the order when you're done.</speak>`;
-                    assistant.ask(assistant.buildRichResponse()
-                        .addSimpleResponse({ speech })
-                        .addSuggestions(['lock', 'add ', 'remove', 'Never mind'])
-                    );
 
+                    if (checkOrder == 1) {
+                        let speech = `<speak> Added ${snackString} ${amountAndSnacksFail} ` +
+                            `Your order contains ${orderString} with a total price of <say-as interpret-as="currency">EUR${orderprice / 100}</say-as>.` +
+                            `You can add and remove items, or lock the order when you're done.</speak>`;
+                        assistant.ask(assistant.buildRichResponse()
+                            .addSimpleResponse({ speech })
+                            .addSuggestions(['lock', 'add ', 'remove', 'Never mind'])
+                        );
+                    } else {
+                        speech = `<speak>${amountAndSnacksFail} was not found in this store, try ordering from a different store.</speak>`;
+                        assistant.ask(speech);
+                    }
                 })
             }
         } else {
@@ -813,7 +880,6 @@ function getUserOrder(assistant, user) {
                 if (moment().isSame(moment(doc.data().open_time), 'day')) {
                     todayHasBite = true;
                     message += doc.data().storename + ", ";
-                    storeNames.push(doc.data().storename);
                 }
                 stores.push(doc);
             });
@@ -823,7 +889,7 @@ function getUserOrder(assistant, user) {
                 let amount = 0;
                 for (let i = 0; i < stores.length; i++) {
                     getLocked(userKey, stores[i].data().store).then(lockedStatus => {
-                        if (lockedStatus == false) {
+                        if (lockedStatus === false) {
                             amountOfOrders++; //+1 order
                             storeNames.push(stores[i].data().storename);
                         }
@@ -836,7 +902,7 @@ function getUserOrder(assistant, user) {
                                 assistant.setContext("user_order", 5);
                                 assistant.data = { username: user.data().display_name, userkey: userKey };
                                 if (!todayHasBite) {
-                                    speech = `<speak> Welcome ${user.data().display_name}! No Bites have recently been opened, you can use the create command to start a new Bite or say start to order from older Bites. </speak>`;
+                                    speech = `<speak> Welcome ${user.data().display_name}! No Bites have recently been opened, you can use the create command to open a new Bite or say start to order from older Bites. </speak>`;
                                     assistant.ask(assistant.buildRichResponse()
                                         .addSimpleResponse({ speech })
                                         .addSuggestions(['order', 'create ', 'start', 'Never mind'])
@@ -905,10 +971,14 @@ function getProduct(store, productName) {
     let i;
     return FS_Stores.doc(store).collection('products').where('name', '==', productName).get()
         .then(snapshot => {
-            snapshot.forEach(doc => {
-                i = doc;
-            });
-            return i;
+            if (snapshot.size > 0) {
+                snapshot.forEach(doc => {
+                    i = doc;
+                });
+                return i;
+            } else {
+                return false;
+            }
         })
 }
 
@@ -944,14 +1014,14 @@ function getLocked(user, store) {
                 return FS_Orders.doc(snapshot.toString()).collection('orders').doc(user.toString()).get()
                     .then(doc => {
                         if (!doc.exists) {
-                            locked = true;
+                            locked = 0;
                         } else {
                             locked = doc.data().locked;
                         }
                         return locked;
                     })
             } else {
-                return true;
+                return 0;
             }
         })
 }

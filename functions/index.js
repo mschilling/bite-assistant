@@ -1,6 +1,6 @@
 'use strict';
 
-process.env.DEBUG = 'actions-on-google:*';
+//process.env.DEBUG = 'actions-on-google:*';
 
 const biteFunctions = require('./functions.js');
 const Assistant = require('actions-on-google').DialogflowApp;
@@ -9,6 +9,7 @@ const functions = require('firebase-functions');
 //start of the firebase function
 exports.Bite = functions.https.onRequest((request, response) => {
   //logs the entire received JSON response
+  console.log("/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////");
   console.log('headers: ' + JSON.stringify(request.headers));
   console.log('body: ' + JSON.stringify(request.body));
 
@@ -19,6 +20,7 @@ exports.Bite = functions.https.onRequest((request, response) => {
   let actionMap = new Map();
   actionMap.set('input.start', getOrderLocation);
   actionMap.set('input.welcome', login);
+  actionMap.set('input.welcome.followup', signup);
   actionMap.set('input.order', placeOrder);
   actionMap.set('input.admin', createBite);
   actionMap.set('input.lock', lockOrder);
@@ -27,22 +29,27 @@ exports.Bite = functions.https.onRequest((request, response) => {
   actionMap.set('input.finish', finishOrder);
   actionMap.set('input.user.order', getUserOrder);
   actionMap.set('input.user.orderedit', getUserOrder);
+  actionMap.set('new_surface_intent', switchScreen);
   assistant.handleRequest(actionMap);
 
   function login(assistant) {
     biteFunctions.biteUser(assistant);
   }
 
+  function signup(assistant) {
+    biteFunctions.signup(assistant);
+  }
+
   function getOrderLocation(assistant) {
-      biteFunctions.biteLocation(assistant);
+    biteFunctions.biteLocation(assistant);
   }
 
   function getUserOrder(assistant) {
-      biteFunctions.getUserOrderItems(assistant);
+    biteFunctions.getUserOrderItems(assistant);
   }
 
   function placeOrder(assistant) {
-      biteFunctions.quickOrder(assistant);
+    biteFunctions.quickOrder(assistant);
   }
 
   function createBite(assistant) {
@@ -63,6 +70,10 @@ exports.Bite = functions.https.onRequest((request, response) => {
 
   function learnMode(assistant) {
     biteFunctions.learnMode(assistant);
+  }
+
+  function switchScreen(assistant) {
+    biteFunctions.switchScreen(assistant);
   }
 
 });

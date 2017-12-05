@@ -1,6 +1,6 @@
 'use strict';
 
-//process.env.DEBUG = 'actions-on-google:*';
+process.env.DEBUG = 'actions-on-google:*';
 
 const biteFunctions = require('./functions.js');
 const Assistant = require('actions-on-google').DialogflowApp;
@@ -30,6 +30,7 @@ exports.Bite = functions.https.onRequest((request, response) => {
   actionMap.set('input.user.order', getUserOrder);
   actionMap.set('input.user.orderedit', getUserOrder);
   actionMap.set('new_surface_intent', switchScreen);
+  actionMap.set('actions_intent_OPTION', createBite);
   assistant.handleRequest(actionMap);
 
   function login(assistant) {
@@ -76,4 +77,7 @@ exports.Bite = functions.https.onRequest((request, response) => {
     biteFunctions.switchScreen(assistant);
   }
 
+  function option(assistant) {
+    biteFunctions.optionHandler(assistant);
+  }
 });

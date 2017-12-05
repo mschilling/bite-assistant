@@ -18,7 +18,10 @@ const FS_Users = db.collection('users');
 var moment = require('moment');
 moment().format();
 
-
+/*
+Allows the user to switch from a speaker device to a phone at any point in the conversation.
+Most data from the conversation will be maintained so the user can continue from where they switched
+*/
 exports.switchScreen = (assistant) => {
     if (assistant.hasSurfaceCapability(assistant.SurfaceCapabilities.SCREEN_OUTPUT)) {
         if (!assistant.isNewSurface()) {
@@ -38,6 +41,7 @@ exports.switchScreen = (assistant) => {
         assistant.tell("Sorry I found no screen");
     }
 }
+
 /*
 Checks the database to see if the user already has an account, this is done by comparing the access tokens
 Performs a https request to get the current user's information if the access token did not match any in the database.
@@ -171,15 +175,54 @@ exports.biteLocation = (assistant) => {
                 speech = `<speak> there are currently ${storeNames.length} open bites in ${locationContext}` + orderStore + `</speak>`;
                 assistant.ask(assistant.buildRichResponse()
                     .addSimpleResponse({ speech })
-                    .addSuggestions(['order from ' + storeNames[0], 'create ', 'start', 'Never mind'])
+                    .addSuggestions(['Order from ' + storeNames[0], 'Create a Bite', 'Never mind'])
                 );
             } else {
-                orderStore = `<break time="1"/>. You can try ordering from another location, or start a Bite here yourself! `;
-                speech = `<speak> there are currently ${storeNames.length} open bites in ${locationContext}` + orderStore + `</speak>`;
-                assistant.ask(assistant.buildRichResponse()
-                    .addSimpleResponse({ speech })
-                    .addSuggestions(['create ', 'start', 'Never mind'])
-                );
+                speech = `<speak> there are currently ${storeNames.length} open bites in ${locationContext} ${orderStore} </speak>`;
+
+                let list = assistant.buildList(`Choose your desired store`);
+
+                //foreach store
+                FS_Stores.get()
+                    .then(storeSnapshot => {
+
+                        //check if there already is an open bite for that store
+                        FS_Orders.where('status', '==', 'open').get()
+                            .then(snapshot => {
+                                let stores = [];
+                                snapshot.forEach(doc => {
+                                    stores.push(doc.data().store);
+                                })
+                                return stores;
+                            }).then(storeArray => {
+                                let i = 0;
+                                let count = 0;
+                                storeSnapshot.forEach(store => {
+                                    console.log(store.data().name + " :: " + store.id + " :: " + storeArray[i]);
+                                    if (storeArray.indexOf(store.data().id) == -1) {
+                                        list.addItems(assistant.buildOptionItem(changeContext + store.data().id, [`${store.data().name}`])
+                                            .setTitle(`${store.data().name}`)
+                                            .setDescription(`${store.data().description}`)
+                                        )
+                                        count++;
+                                    }
+                                    i++;
+                                })
+                                return count;
+                            }).then(count => {
+                                if (count == 0) {
+                                    return assistant.ask("There's an open Bite for every store already, go ahead and place an order.");
+                                } else if (count == 1) {
+                                    list.addItems(assistant.buildOptionItem("placeholder", [`placeholder`])
+                                        .setTitle("placeholder")
+                                        .setDescription(`Please don't click me QwQ`)
+                                    )
+                                    assistant.askWithList(`There are no open Bites in ${locationContext}. Do you want to start a Bite?`, list)
+                                } else if (count > 1) {
+                                    assistant.askWithList(`There are no open Bites in ${locationContext}. Do you want to start a Bite?`, list)
+                                }
+                            })
+                    })
             }
         })
 };
@@ -525,72 +568,135 @@ exports.AdminFunctions = (assistant) => {
     let hasScreen = assistant.hasSurfaceCapability(assistant.SurfaceCapabilities.SCREEN_OUTPUT)
 
     //get the arguments from the user query
-    const changeContext = assistant.getArgument("action");
-    const storeContext = assistant.getArgument("store");
+    let changeContext = assistant.getArgument("action");
+    let storeContext = assistant.getArgument("store");
     console.log("Change: " + changeContext + ", Store: " + storeContext);
 
     //get the userID
     let userkey = assistant.data.userkey;
 
-    let speech = `<speak> You don't have permission to close this Bite. Make sure that you're an admin and that you're using a mobile device. </speak>`;
+    let speech;
     let ordercheck = 0;
 
-    FS_Orders.where('status', '==', 'open').where('store', '==', parseInt(storeContext)).get()
-        .then(snapshot => {
-            if (snapshot.size > 0) {
-                snapshot.forEach(doc => {
-                    if (changeContext == "remove" || changeContext == "close") {
-                        if (hasScreen) {
-                            if (assistant.data.userkey == doc.data().opened_by || assistant.getContext("admin")) {
-                                checkforUsers(storeContext).then(orderAmount => {
-                                    if (orderAmount > 0) {
-                                        //"archive" the bite(close it)
-                                        FS_Orders.doc(doc.id).update({
-                                            status: "closed"
-                                        });
-                                        speech = `<speak> The ${doc.data().storename} Bite has been closed. Anything else? </speak>`;
-                                    } else {
-                                        //There are no orders in this Bite so lets just delete it
-                                        FS_Orders.doc(doc.id).delete();
-                                        speech = `<speak> The ${doc.data().storename} Bite has been DELETED since no orders were found in it. Anything else? </speak>`;
-                                        return assistant.ask(speech);
-                                    }
-                                })
+    const param = assistant.getSelectedOption();
+    console.log(param);
+
+    if (param) {
+        let num = param.match(/\d+/g);
+        let letr = param.match(/[a-zA-Z]+/g);
+        console.log(num + " " + letr);
+
+        changeContext = letr + "";
+        storeContext = num + "";
+    }
+
+    if (storeContext || param) {
+        FS_Orders.where('status', '==', 'open').where('store', '==', parseInt(storeContext)).get()
+            .then(snapshot => {
+                if (snapshot.size > 0) {
+                    snapshot.forEach(doc => {
+                        if (changeContext == "remove" || changeContext == "close") {
+                            if (hasScreen) {
+                                if (assistant.data.userkey == doc.data().opened_by || assistant.getContext("admin")) {
+                                    checkforUsers(storeContext).then(orderAmount => {
+                                        if (orderAmount > 0) {
+                                            //"archive" the bite(close it)
+                                            FS_Orders.doc(doc.id).update({
+                                                status: "closed"
+                                            });
+                                            speech = `<speak> The ${doc.data().storename} Bite has been closed. Anything else? </speak>`;
+                                            return assistant.ask(speech);
+                                        } else {
+                                            //There are no orders in this Bite so lets just delete it
+                                            FS_Orders.doc(doc.id).delete();
+                                            speech = `<speak> The ${doc.data().storename} Bite has been DELETED since no orders were found in it. Anything else? </speak>`;
+                                            return assistant.ask(speech);
+                                        }
+                                    })
+                                } else {
+                                    speech = `<speak> You don't have permission to close this Bite. Make sure that you're an admin and that you're using a mobile device. </speak>`
+                                    return assistant.ask(speech);
+                                }
                             } else {
-                                speech = `<speak> The ${doc.data().storename} Bite has been closed. Anything else? </speak>`;
+                                speech = `<speak> You don't have permission to close this Bite. Make sure that you're an admin and that you're using a mobile device. </speak>`
                                 return assistant.ask(speech);
                             }
+                        } else {
+                            speech = `<speak> There is already an open Bite for this store. Try for another store!  </speak>`;
+                            return assistant.ask(speech);
                         }
+                    });
+                } else {
+                    if (changeContext == "add") {
+                        FS_Stores.doc(storeContext).get()
+                            .then(doc => {
+                                let now = new Date();
+                                let name = doc.data().name.replace(/ /g, "_");
+                                FS_Orders.doc((name + storeContext + now.setMinutes(now.getMinutes() + 0)).toString()).set({
+                                    open_time: now.setMinutes(now.getMinutes() + 0),
+                                    close_time: now.setMinutes(now.getMinutes() + 30),
+                                    duration: 30,
+                                    location: doc.data().location,
+                                    opened_by: userkey,
+                                    status: "open",
+                                    store: parseInt(storeContext),
+                                    storename: doc.data().name
+                                }).then(() => {
+                                    speech = `<speak> I’ve opened a Bite for ${doc.data().name} in ${doc.data().location}. The Bite will be open for 30 minutes so hurry up and place your orders!  </speak>`;
+                                    return assistant.tell(speech);
+                                })
+                            })
                     } else {
-                        speech = `<speak> There is already an open Bite for this store. Try for another store!  </speak>`;
+                        speech = `<speak> There is no open Bite for this store, try for another store! </speak>`;
                         return assistant.ask(speech);
                     }
-                });
-            } else {
-                if (changeContext == "add") {
-                    FS_Stores.doc(storeContext).get()
-                        .then(doc => {
-                            let now = new Date();
-                            FS_Orders.doc((storeContext + now.setMinutes(now.getMinutes() + 0)).toString()).set({
-                                open_time: now.setMinutes(now.getMinutes() + 0),
-                                close_time: now.setMinutes(now.getMinutes() + 30),
-                                duration: 30,
-                                location: doc.data().location,
-                                opened_by: userkey,
-                                status: "open",
-                                store: parseInt(storeContext),
-                                storename: doc.data().name
-                            }).then(() => {
-                                speech = `<speak> I’ve opened a Bite for ${doc.data().name} in ${doc.data().location}. The Bite will be open for 30 minutes so hurry up and place your orders!  </speak>`;
-                                return assistant.tell(speech);
-                            })
-                        })
-                } else {
-                    speech = `<speak> There is no open Bite for this store, try for another store! </speak>`;
-                    return assistant.ask(speech);
                 }
-            }
-        })
+            })
+    } else {
+        let list = assistant.buildList(`Choose your desired store`);
+
+        //foreach store
+        FS_Stores.get()
+            .then(storeSnapshot => {
+
+                //check if there already is an open bite for that store
+                FS_Orders.where('status', '==', 'open').get()
+                    .then(snapshot => {
+                        let stores = [];
+                        snapshot.forEach(doc => {
+                            stores.push(doc.data().store);
+                        })
+                        return stores;
+                    }).then(storeArray => {
+                        let i = 0;
+                        let count = 0;
+                        storeSnapshot.forEach(store => {
+                            console.log(store.data().name + " :: " + store.id + " :: " + storeArray[i]);
+                            if (storeArray.indexOf(store.data().id) == -1) {
+                                list.addItems(assistant.buildOptionItem(changeContext + store.data().id, [`${store.data().name}`])
+                                    .setTitle(`${store.data().name}`)
+                                    .setDescription(`${store.data().description}`)
+                                )
+                                count++;
+                            }
+                            i++;
+                        })
+                        return count;
+                    }).then(count => {
+                        if (count == 0) {
+                            return assistant.ask("There's an open Bite for every store already, go ahead and place an order.");
+                        } else if (count == 1) {
+                            list.addItems(assistant.buildOptionItem("placeholder", [`placeholder`])
+                                .setTitle("placeholder")
+                                .setDescription(`Please don't click me QwQ`)
+                            )
+                            assistant.askWithList(`For which store do you want to ${changeContext} a Bite?`, list)
+                        } else if (count > 1) {
+                            assistant.askWithList(`For which store do you want to ${changeContext} a Bite?`, list)
+                        }
+                    })
+            })
+    }
 };
 
 /*
@@ -873,6 +979,7 @@ function getUserOrder(assistant, user) {
     let amountOfOrders = 0;
     let stores = [];
     let storeNames = [];
+    let storeNameToday = "";
 
     //Get all open orders, check if the user has an order there.
     let getOpenOrders = FS_Orders.where('status', '==', 'open').get()
@@ -881,6 +988,7 @@ function getUserOrder(assistant, user) {
                 if (moment().isSame(moment(doc.data().open_time), 'day')) {
                     todayHasBite = true;
                     message += doc.data().storename + ", ";
+                    storeNameToday = doc.data().storename;
                 }
                 stores.push(doc);
             });
@@ -906,13 +1014,13 @@ function getUserOrder(assistant, user) {
                                     speech = `<speak> Welcome ${user.data().display_name}! No Bites have recently been opened, you can use the create command to open a new Bite or say start to order from older Bites. </speak>`;
                                     assistant.ask(assistant.buildRichResponse()
                                         .addSimpleResponse({ speech })
-                                        .addSuggestions(['order', 'create ', 'start', 'Never mind'])
+                                        .addSuggestions(['order', 'Create a Bite', 'start', 'Never mind'])
                                     );
                                 } else {
                                     speech = `<speak> Welcome ${user.data().display_name}!` + message + ` do you want to place an order here?.</speak>`;
                                     assistant.ask(assistant.buildRichResponse()
                                         .addSimpleResponse({ speech })
-                                        .addSuggestions(['order from ' + storeNames[0], 'create ', 'start', 'Never mind'])
+                                        .addSuggestions(['order from ' + storeNameToday, 'Create a Bite', 'start', 'Never mind'])
                                     );
                                 }
                             } else {
@@ -936,10 +1044,10 @@ function getUserOrder(assistant, user) {
                 }
                 assistant.setContext("user_order", 5);
                 assistant.data = { username: user.data().display_name, userkey: userKey };
-                speech = `<speak> Welcome ${user.data().display_name}! No Bites have recently been opened, you can use the create command to start a new Bite. </speak>`;
+                speech = `<speak> Welcome ${user.data().display_name}! There are no open Bites, you can use the create command to open a new Bite. </speak>`;
                 assistant.ask(assistant.buildRichResponse()
                     .addSimpleResponse({ speech })
-                    .addSuggestions(['create', 'Never mind'])
+                    .addSuggestions(['Create a Bite', 'Never mind'])
                 );
             }
         })

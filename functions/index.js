@@ -16,7 +16,7 @@ exports.Bite = functions.https.onRequest((request, response) => {
   //create an assistant object
   const assistant = new Assistant({ request: request, response: response });
 
-  //actionmap to handle the incoming requests. The name inbetween the quotes matches the action name in api.ai
+  //actionmap to handle the incoming requests. The name inbetween the quotes matches the action name in Dialogflow
   let actionMap = new Map();
   actionMap.set('input.start', getOrderLocation);
   actionMap.set('input.welcome', login);
@@ -32,6 +32,19 @@ exports.Bite = functions.https.onRequest((request, response) => {
   actionMap.set('new_surface_intent', switchScreen);
   actionMap.set('actions_intent_OPTION', createBite);
   assistant.handleRequest(actionMap);
+
+  function createBite(assistant) {
+    const param = assistant.getSelectedOption();
+    if (assistant.getContext("help")) {
+      let speech = `Try saying: ${param} to perform this action`;
+      assistant.ask(assistant.buildRichResponse()
+        .addSimpleResponse({ speech })
+        .addSuggestions([param, 'Never mind'])
+      );
+    } else {
+      biteFunctions.AdminFunctions(assistant);
+    }
+  }
 
   function login(assistant) {
     biteFunctions.biteUser(assistant);
@@ -51,10 +64,6 @@ exports.Bite = functions.https.onRequest((request, response) => {
 
   function placeOrder(assistant) {
     biteFunctions.quickOrder(assistant);
-  }
-
-  function createBite(assistant) {
-    biteFunctions.AdminFunctions(assistant);
   }
 
   function lockOrder(assistant) {

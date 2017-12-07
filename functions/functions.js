@@ -706,7 +706,11 @@ exports.lockOrder = (assistant) => {
     //get the arguments from the user query
     let storeContext = assistant.getArgument("store");
     if (!storeContext) {
-        storeContext = assistant.data.userStore;
+        if (assistant.data.userStore) {
+            storeContext = assistant.data.userStore;
+        } else {
+            return assistant.ask("Try saying 'Lock' followed by the store where you want to lock your order.")
+        }
     }
 
     //get the userID
@@ -1014,13 +1018,13 @@ function getUserOrder(assistant, user) {
                                     speech = `<speak> Welcome ${user.data().display_name}! No Bites have recently been opened, you can use the create command to open a new Bite or say start to order from older Bites. </speak>`;
                                     assistant.ask(assistant.buildRichResponse()
                                         .addSimpleResponse({ speech })
-                                        .addSuggestions(['order', 'Create a Bite', 'start', 'Never mind'])
+                                        .addSuggestions(['order', 'Create a Bite', 'start', 'help', 'Never mind'])
                                     );
                                 } else {
                                     speech = `<speak> Welcome ${user.data().display_name}!` + message + ` do you want to place an order here?.</speak>`;
                                     assistant.ask(assistant.buildRichResponse()
                                         .addSimpleResponse({ speech })
-                                        .addSuggestions(['order from ' + storeNameToday, 'Create a Bite', 'start', 'Never mind'])
+                                        .addSuggestions(['order from ' + storeNameToday, 'Create a Bite', 'start', 'help', 'Never mind'])
                                     );
                                 }
                             } else {
@@ -1047,7 +1051,7 @@ function getUserOrder(assistant, user) {
                 speech = `<speak> Welcome ${user.data().display_name}! There are no open Bites, you can use the create command to open a new Bite. </speak>`;
                 assistant.ask(assistant.buildRichResponse()
                     .addSimpleResponse({ speech })
-                    .addSuggestions(['Create a Bite', 'Never mind'])
+                    .addSuggestions(['Create a Bite', 'help', 'Never mind'])
                 );
             }
         })

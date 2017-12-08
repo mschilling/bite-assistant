@@ -42,13 +42,8 @@ function testGetUser(userId) {
 }
 
 function testGetOpenOrders() {
-  api.getOpenOrders().then(array => {
-    for (let i = 0; i < array.length; i++) {
-      //amountAndSnacks += array[i].data().amount + " " + array[i].data().name + ", ";
-      console.log(array[i].data().amount + " " + array[i].data().name + ", ");
-      //totalPrice += array[i].data().price;
-    }
-  });
+  api.getOpenOrders();
+};
 
   // return api.getOpenOrders()
   // .then( data => {
@@ -61,4 +56,3 @@ function testGetOpenOrders() {
   //     //   });
   //   });
   // });
-}

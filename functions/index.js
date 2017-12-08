@@ -48,6 +48,7 @@ exports.Bite = functions.https.onRequest((request, response) => {
 
   function login(assistant) {
     biteFunctions.biteUser(assistant);
+    biteFunctions.iKnowWhatYourFavouriteSnackIs(assistant);
   }
 
   function signup(assistant) {

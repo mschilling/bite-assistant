@@ -969,7 +969,7 @@ exports.learnMode = (assistant) => {
 //learn when the user often orders: friday/wednesday
 //only perform this function once per day
 exports.iKnowWhatYourFavouriteSnackIs = (assistant) => {
-    let userKey = "2zjwkTWsWAd2ZyU2EoBnQrvU2fz2";
+    let userKey = assistant.data.userkey;
 
     let snackArray = []; //save all previously ordered snacks
     let amountArray = []; //save all previously ordered snack amounts
@@ -1077,6 +1077,52 @@ exports.iKnowWhatYourFavouriteSnackIs = (assistant) => {
         return result;
     }
 }
+
+exports.getArchivedOrders = (assistant) => {
+    let userKey = assistant.data.userkey;
+
+    //get the arguments from the user query
+    let storeContext = assistant.getArgument("store");
+    console.log("Store: " + storeContext);
+
+    let check = 0;
+    let amountAndSnacks = "";
+    let totalPrice = 0;
+    let speech;
+
+    //will return multiple closed orders
+    //make it so the user can select from a list selector of closed orders, sorted by date
+    const param = assistant.getSelectedOption();
+    if (param) {
+        getArchivedOrder(userKey, storeContext).then(orders => {
+            for (let i = 0; i < orders.length; i++) {
+                check = 1;
+                amountAndSnacks += orders[i].data().amount + " " + orders[i].data().name + ", ";
+                totalPrice += orders[i].data().price;
+            }
+            if (check == 1) {
+
+                speech = `<speak> Your closed order contains: ${amountAndSnacks} with a total price of` +
+                    `<say-as interpret-as="currency">EUR${totalPrice / 100}</say-as>. </speak>`;
+                return assistant.ask(assistant.buildRichResponse()
+                    .addSimpleResponse({ speech })
+                    .addSuggestions(['lock', 'add', 'remove', 'Never mind'])
+                );
+
+            } else {
+                speech = `<speak> You have not ordered from this store before, try again for a different store. </speak>`;
+                assistant.ask(speech)
+            }
+        })
+    } else {
+        getArchivedBites.then(orders => {
+            //make a list selector
+            //add list selector contexts in dialoflow and handle it in the above part
+            
+        })
+    }
+}
+
 
 /* 
                                                     PRIVATE FUNCTIONS
@@ -1192,6 +1238,42 @@ function getOrder(user, store) {
                     });
                     return snacks;
                 })
+        })
+}
+
+//returns all items in an user's order
+function getArchivedOrder(user, store) {
+
+    let snacks = [];
+    let docID;
+    return FS_Orders.where('status', '==', 'closed').where('store', '==', parseInt(store)).get()
+        .then(snapshot => {
+            snapshot.forEach(doc => {
+                docID = doc.id;
+            });
+            return docID;
+        }).then(snapshot => {
+            return FS_Orders.doc(snapshot.toString()).collection('orders').doc(user.toString()).collection('snacks').get()
+                .then(snapshot => {
+                    snapshot.forEach(doc => {
+                        snacks.push(doc);
+                    });
+                    return snacks;
+                })
+        })
+}
+
+//returns all items in an user's order
+function getArchivedBites(store) {
+
+    let snacks = [];
+    let docID = [];
+    return FS_Orders.where('status', '==', 'closed').where('store', '==', parseInt(store)).get()
+        .then(snapshot => {
+            snapshot.forEach(doc => {
+                docID.push(doc.id);
+            });
+            return docID;
         })
 }
 

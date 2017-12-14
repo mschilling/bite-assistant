@@ -968,7 +968,7 @@ exports.learnMode = (assistant) => {
 //a push notification may be send to the user, on clicking it the user will be shown the list of his recommended orders and be able to place it with 1 click
 //learn when the user often orders: friday/wednesday
 //only perform this function once per day
-exports.iKnowWhatYourFavouriteSnackIs = (assistant) => {
+function iKnowWhatYourFavouriteSnackIs(assistant) {
     let userKey = assistant.data.userkey;
 
     let snackArray = []; //save all previously ordered snacks
@@ -978,19 +978,27 @@ exports.iKnowWhatYourFavouriteSnackIs = (assistant) => {
     let combinedOrders = [];
     let day = [];
 
+    console.log(userKey);
     FS_Users.doc(userKey).collection("habits").doc("orders").get()
         .then(time => {
             let bool = false;
             if (time.exists) {
                 let oneDayAgo = moment().subtract(1, 'days');
                 let lastUpdate = moment(time.data().lastUpdate);
-                bool = moment(lastUpdate).isSameOrBefore(oneDayAgo); //only update once per day
+                if (time.data().lastUpdate) {
+                    bool = moment(lastUpdate).isSameOrBefore(oneDayAgo); //only update once per day
+                } else {
+                    bool = true;
+                }
+
+                console.log(bool);
             } else {
                 bool = true; //dev mode
+                console.log("does not exist");
             }
 
             if (bool) {
-
+                console.log("go");
                 //loop through all archived Bites
                 FS_Orders.where('status', '==', 'closed').get()
                     .then(snapshot => {
@@ -1078,6 +1086,7 @@ exports.iKnowWhatYourFavouriteSnackIs = (assistant) => {
     }
 }
 
+//generates a list of all previous orders at the specified store, then tells the order 
 exports.getArchivedOrders = (assistant) => {
     let userKey = assistant.data.userkey;
 
@@ -1090,11 +1099,47 @@ exports.getArchivedOrders = (assistant) => {
     let totalPrice = 0;
     let speech;
 
-    //will return multiple closed orders
-    //make it so the user can select from a list selector of closed orders, sorted by date
     const param = assistant.getSelectedOption();
     if (param) {
-        getArchivedOrder(userKey, storeContext).then(orders => {
+        getItems(param);
+    } else {
+        let list = assistant.buildList(`Choose your order`);
+        let i = 0;
+        let count = 0;
+        let save;
+        getArchivedBites(storeContext, userKey).then(orders => {
+            if (orders.length != 0) {
+                orders.forEach(order => {
+                    FS_Orders.doc(order.id).collection('orders').doc(userKey).get()
+                        .then(doc => {
+                            if (doc.exists) {
+                                let dateString = moment(order.data().open_time).format('dddd, MMMM Do, YYYY');
+                                list.addItems(assistant.buildOptionItem(order.id.toString(), [])
+                                    .setTitle((i + 1) + ". " + dateString)
+                                    .setDescription(order.data().storename + ", " + order.data().location)
+                                )
+                                save = order.id;
+                                count++;
+                            }
+                            i++;
+                            if (i == orders.length) {
+                                if (count > 1) {
+                                    assistant.askWithList(`These are the Bites you have ordered from before`, list);
+                                } else if (count == 1) {
+                                    getItems(save);
+                                } else {
+                                    return assistant.ask("You don't have any previous orders for this store. Try again for another store.");
+                                }
+                            }
+                        })
+                })
+            } else {
+                return assistant.ask("You don't have any previous orders for this store. Try again for another store.");
+            }
+        })
+    }
+    function getItems(parameter) {
+        getArchivedOrder(userKey, parameter).then(orders => {
             for (let i = 0; i < orders.length; i++) {
                 check = 1;
                 amountAndSnacks += orders[i].data().amount + " " + orders[i].data().name + ", ";
@@ -1103,7 +1148,7 @@ exports.getArchivedOrders = (assistant) => {
             if (check == 1) {
 
                 speech = `<speak> Your closed order contains: ${amountAndSnacks} with a total price of` +
-                    `<say-as interpret-as="currency">EUR${totalPrice / 100}</say-as>. </speak>`;
+                    `<say-as interpret-as="currency">EUR${totalPrice / 100}</say-as>. Anything else you want to do? </speak>`;
                 return assistant.ask(assistant.buildRichResponse()
                     .addSimpleResponse({ speech })
                     .addSuggestions(['lock', 'add', 'remove', 'Never mind'])
@@ -1113,12 +1158,6 @@ exports.getArchivedOrders = (assistant) => {
                 speech = `<speak> You have not ordered from this store before, try again for a different store. </speak>`;
                 assistant.ask(speech)
             }
-        })
-    } else {
-        getArchivedBites.then(orders => {
-            //make a list selector
-            //add list selector contexts in dialoflow and handle it in the above part
-            
         })
     }
 }
@@ -1217,6 +1256,7 @@ function getUserOrder(assistant, user) {
                 );
             }
         })
+    iKnowWhatYourFavouriteSnackIs(assistant);
 };
 
 //returns all items in an user's order
@@ -1246,32 +1286,24 @@ function getArchivedOrder(user, store) {
 
     let snacks = [];
     let docID;
-    return FS_Orders.where('status', '==', 'closed').where('store', '==', parseInt(store)).get()
+    return FS_Orders.doc(store.toString()).collection('orders').doc(user.toString()).collection('snacks').get()
         .then(snapshot => {
             snapshot.forEach(doc => {
-                docID = doc.id;
+                snacks.push(doc);
             });
-            return docID;
-        }).then(snapshot => {
-            return FS_Orders.doc(snapshot.toString()).collection('orders').doc(user.toString()).collection('snacks').get()
-                .then(snapshot => {
-                    snapshot.forEach(doc => {
-                        snacks.push(doc);
-                    });
-                    return snacks;
-                })
+            return snacks;
         })
+
 }
 
-//returns all items in an user's order
-function getArchivedBites(store) {
-
+//returns the ids of all closed Bites for a certain store
+function getArchivedBites(store, user) {
     let snacks = [];
     let docID = [];
     return FS_Orders.where('status', '==', 'closed').where('store', '==', parseInt(store)).get()
         .then(snapshot => {
             snapshot.forEach(doc => {
-                docID.push(doc.id);
+                docID.push(doc);
             });
             return docID;
         })

@@ -31,6 +31,7 @@ exports.Bite = functions.https.onRequest((request, response) => {
   actionMap.set('input.user.orderedit', getUserOrder);
   actionMap.set('new_surface_intent', switchScreen);
   actionMap.set('actions_intent_OPTION', createBite);
+  actionMap.set('archive', getArchivedOrders);
   assistant.handleRequest(actionMap);
 
   function createBite(assistant) {
@@ -41,6 +42,8 @@ exports.Bite = functions.https.onRequest((request, response) => {
         .addSimpleResponse({ speech })
         .addSuggestions([param, 'Never mind'])
       );
+    } else if (assistant.getContext("archive")) {
+      biteFunctions.getArchivedOrders(assistant);
     } else {
       biteFunctions.AdminFunctions(assistant);
     }
@@ -48,7 +51,6 @@ exports.Bite = functions.https.onRequest((request, response) => {
 
   function login(assistant) {
     biteFunctions.biteUser(assistant);
-    biteFunctions.iKnowWhatYourFavouriteSnackIs(assistant);
   }
 
   function signup(assistant) {
@@ -89,5 +91,9 @@ exports.Bite = functions.https.onRequest((request, response) => {
 
   function option(assistant) {
     biteFunctions.optionHandler(assistant);
+  }
+
+  function getArchivedOrders(assistant) {
+    biteFunctions.getArchivedOrders(assistant);
   }
 });

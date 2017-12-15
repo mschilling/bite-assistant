@@ -1,6 +1,6 @@
 'use strict';
 
-process.env.DEBUG = 'actions-on-google:*';
+//process.env.DEBUG = 'actions-on-google:*';
 
 const biteFunctions = require('./functions.js');
 const Assistant = require('actions-on-google').DialogflowApp;

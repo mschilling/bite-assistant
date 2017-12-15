@@ -324,16 +324,13 @@ exports.getUserOrderItems = (assistant) => {
                                         let amount = 0;
                                         for (let o = 0; o < array.length; o++) {
                                             if (array[o].data().name == product.data().name) {
+                                                change = "removed";
                                                 amount = (array[o].data().amount - amountContext[i]);
-                                                if (amount < 0) {
-                                                    amount = 0;
-                                                    FS_Orders.doc(id).collection('orders').doc(userKey.toString()).collection('snacks').doc(product.id).delete();
+                                                if (amount <= 0) {
+                                                    FS_Orders.doc(id).collection('orders').doc(userKey.toString()).collection('snacks').doc(product.id).delete()
 
-                                                    //build the responses
-                                                    change = "removed";
                                                     amountAndSnacks += "all " + " " + product.data().name + ", ";
                                                 } else {
-                                                    //build the response
                                                     change = "removed";
                                                     amountAndSnacks += amountContext[i] + " " + product.data().name + ", ";
 
@@ -381,8 +378,8 @@ exports.getUserOrderItems = (assistant) => {
 
             if (checkOrder == 1) {
                 speech = `<speak> ${change} ${amountAndSnacks} ${amountAndSnacksFail} ` +
-                    `Your order contains ${orderString} with a total price of <say-as interpret-as="currency">EUR${orderprice / 100}</say-as>. `
-                        `You can add and remove items from your order, or lock it when you're done.` +
+                    `Your order contains ${orderString} with a total price of <say-as interpret-as="currency">EUR${orderprice / 100}</say-as>. ` +
+                    `You can add and remove items from your order, or lock it when you're done.` +
                     `</speak>`;
                 return assistant.ask(assistant.buildRichResponse()
                     .addSimpleResponse({ speech })
@@ -978,7 +975,6 @@ function iKnowWhatYourFavouriteSnackIs(assistant) {
     let combinedOrders = [];
     let day = [];
 
-    console.log(userKey);
     FS_Users.doc(userKey).collection("habits").doc("orders").get()
         .then(time => {
             let bool = false;
@@ -991,14 +987,11 @@ function iKnowWhatYourFavouriteSnackIs(assistant) {
                     bool = true;
                 }
 
-                console.log(bool);
             } else {
-                bool = true; //dev mode
-                console.log("does not exist");
+                bool = true;
             }
 
             if (bool) {
-                console.log("go");
                 //loop through all archived Bites
                 FS_Orders.where('status', '==', 'closed').get()
                     .then(snapshot => {
@@ -1024,6 +1017,16 @@ function iKnowWhatYourFavouriteSnackIs(assistant) {
 
                                         //loop through all the snacks 
                                         snapshot.forEach(snack => {
+
+                                            /*
+                                            TODO
+                                            Allow multiple snacks in 1 order to be the most popular snack as a combination
+                                            place all items from 1 order in an array
+                                            sort the array alphabetically
+                                            turn it into a string
+                                            compare the strings to find the most popular items string
+                                            */
+
                                             snackArray.push(snack.data().name);
                                             amountArray.push(snack.data().amount);
 
@@ -1031,7 +1034,6 @@ function iKnowWhatYourFavouriteSnackIs(assistant) {
                                             amountsInThisStore.push(snack.data().amount);
 
                                             i++;
-                                            //console.log(i + " " + snapshot.size);
                                             if (i == snapshot.size) {
                                                 combinedOrders.push(snacksInThisStore, amountsInThisStore);
                                             }
@@ -1149,10 +1151,7 @@ exports.getArchivedOrders = (assistant) => {
 
                 speech = `<speak> Your closed order contains: ${amountAndSnacks} with a total price of` +
                     `<say-as interpret-as="currency">EUR${totalPrice / 100}</say-as>. Anything else you want to do? </speak>`;
-                return assistant.ask(assistant.buildRichResponse()
-                    .addSimpleResponse({ speech })
-                    .addSuggestions(['lock', 'add', 'remove', 'Never mind'])
-                );
+                assistant.ask(speech);
 
             } else {
                 speech = `<speak> You have not ordered from this store before, try again for a different store. </speak>`;

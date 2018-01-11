@@ -669,13 +669,24 @@ exports.AdminFunctions = (assistant) => {
                         let count = 0;
                         storeSnapshot.forEach(store => {
                             console.log(store.data().name + " :: " + store.id + " :: " + storeArray[i]);
-                            if (storeArray.indexOf(store.data().id) == -1) {
-                                list.addItems(assistant.buildOptionItem(changeContext + store.data().id, [`${store.data().name}`])
-                                    .setTitle(`${store.data().name}`)
-                                    .setDescription(`${store.data().description}`)
-                                )
-                                count++;
+                            if (changeContext == "remove" || changeContext == "close") {
+                                if (storeArray.indexOf(store.data().id) != -1) {
+                                    list.addItems(assistant.buildOptionItem(changeContext + store.data().id, [`${store.data().name}`])
+                                        .setTitle(`${store.data().name}`)
+                                        .setDescription(`${store.data().description}`)
+                                    )
+                                    count++;
+                                }
+                            } else {
+                                if (storeArray.indexOf(store.data().id) == -1) {
+                                    list.addItems(assistant.buildOptionItem(changeContext + store.data().id, [`${store.data().name}`])
+                                        .setTitle(`${store.data().name}`)
+                                        .setDescription(`${store.data().description}`)
+                                    )
+                                    count++;
+                                }
                             }
+
                             i++;
                         })
                         return count;

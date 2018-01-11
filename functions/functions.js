@@ -265,7 +265,7 @@ exports.getUserOrderItems = (assistant) => {
                     if (locked == true) {
                         message = "Your order for this store is Locked so you can not edit it. Do you want to place another order?";
                     }
-                    speech = `<speak> your order contains: ${amountAndSnacks} with a total price of` +
+                    speech = `<speak> your order contains ${amountAndSnacks}with a total price of` +
                         `<say-as interpret-as="currency">EUR${totalPrice / 100}</say-as>. ` + message +
                         `</speak>`;
                     return assistant.ask(assistant.buildRichResponse()
@@ -433,9 +433,9 @@ exports.quickOrder = (assistant) => {
                             .then(doc => {
                                 snackContext.forEach(entry => {
                                     //if amount is undefined set to 1
-                                    if (amountContext[snackCount]) {
+                                    if (amountContext[snackContext.indexOf(entry)]) {
                                     } else {
-                                        amountContext[snackCount] = 1;
+                                        amountContext[snackContext.indexOf(entry)] = 1;
                                     }
                                     getProduct(storeContext, entry)
                                         .then(item => {
@@ -504,10 +504,14 @@ exports.quickOrder = (assistant) => {
                                                         })
                                                 }
                                             } else {
-                                                amountAndSnacksFail += " could not add or remove " + entry + ", ";
-                                                if (i == snackContext.length - 1) {
-                                                    reponse();
+                                                if (amountAndSnacksFail == "") {
+                                                    amountAndSnacksFail += " Failed to add "
                                                 }
+                                                amountAndSnacksFail += entry + ", ";
+                                                if (snackCount == snackContext.length - 1) {
+                                                    return response();
+                                                }
+                                                snackCount++;
                                             }
                                         })
                                 })
@@ -522,6 +526,7 @@ exports.quickOrder = (assistant) => {
                 let amountArray = [];
                 let orderString = "";
                 let orderprice = 0;
+                let speech = "";
 
                 getOrder(assistant.data.userkey, storeContext).then(snacks => {
                     for (let i = 0; i < snacks.length; i++) {
@@ -535,7 +540,7 @@ exports.quickOrder = (assistant) => {
                     assistant.setContext("edit_order", 2);
 
                     if (checkOrder == 1) {
-                        let speech = `<speak> Added ${snackString} ${amountAndSnacksFail} ` +
+                        speech = `<speak> Added ${snackString}${amountAndSnacksFail}` +
                             `Your order contains ${orderString} with a total price of <say-as interpret-as="currency">EUR${orderprice / 100}</say-as>.` +
                             `You can add and remove items, or lock the order when you're done.</speak>`;
                         assistant.ask(assistant.buildRichResponse()
@@ -543,7 +548,7 @@ exports.quickOrder = (assistant) => {
                             .addSuggestions(['lock', 'add ', 'remove', 'Never mind'])
                         );
                     } else {
-                        speech = `<speak>${amountAndSnacksFail} was not found in this store, try ordering from a different store.</speak>`;
+                        speech = `<speak>${amountAndSnacksFail}try ordering from a different store.</speak>`;
                         assistant.ask(speech);
                     }
                 })
@@ -717,13 +722,12 @@ exports.lockOrder = (assistant) => {
         if (assistant.data.userStore) {
             storeContext = assistant.data.userStore;
         } else {
-            return assistant.ask("Try saying 'Lock' followed by the store where you want to lock your order.")
+            return assistant.ask("For which store do you want to lock your order?")
         }
     }
 
     //get the userID
     let userkey = assistant.data.userkey;
-
     let speech;
 
     FS_Orders.where('status', '==', 'open').where('store', '==', parseInt(storeContext)).get()
@@ -1194,6 +1198,7 @@ function getUserOrder(assistant, user) {
     let amountOfOrders = 0;
     let stores = [];
     let storeNames = [];
+    let openStores = [];
     let storeNameToday = "";
 
     //Get all open orders, check if the user has an order there.
@@ -1205,6 +1210,7 @@ function getUserOrder(assistant, user) {
                     message += doc.data().storename + ", ";
                     storeNameToday = doc.data().storename;
                 }
+                openStores.push(doc.data().storename);
                 stores.push(doc);
             });
             return stores;
@@ -1226,7 +1232,7 @@ function getUserOrder(assistant, user) {
                                 assistant.setContext("user_order", 5);
                                 assistant.data = { username: user.data().display_name, userkey: userKey };
                                 if (!todayHasBite) {
-                                    speech = `<speak> Welcome ${user.data().display_name}! No Bites have recently been opened, you can use the create command to open a new Bite or say start to order from older Bites. </speak>`;
+                                    speech = `<speak> Welcome ${user.data().display_name}! No Bites have recently been opened, you can use the create command to open a new Bite or order from one of the older ${openStores.toString()} Bites. </speak>`;
                                     assistant.ask(assistant.buildRichResponse()
                                         .addSimpleResponse({ speech })
                                         .addSuggestions(['order', 'Create a Bite', 'start', 'help', 'Never mind'])

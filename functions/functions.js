@@ -350,7 +350,7 @@ exports.getUserOrderItems = (assistant) => {
                                     }
                                 })
                             } else {
-                                amountAndSnacksFail += " could not add or remove " + snackContext[i] + ", ";
+                                amountAndSnacksFail += " could not " + changeContext + snackContext[i] + ", ";
                                 if (i == snackContext.length - 1) {
                                     reponse();
                                 }
@@ -377,7 +377,7 @@ exports.getUserOrderItems = (assistant) => {
             }
 
             if (checkOrder == 1) {
-                speech = `<speak> ${change} ${amountAndSnacks} ${amountAndSnacksFail} ` +
+                speech = `<speak> ${change} ${amountAndSnacks}${amountAndSnacksFail}` +
                     `Your order contains ${orderString} with a total price of <say-as interpret-as="currency">EUR${orderprice / 100}</say-as>. ` +
                     `You can add and remove items from your order, or lock it when you're done.` +
                     `</speak>`;

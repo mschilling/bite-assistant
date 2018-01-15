@@ -67,20 +67,20 @@
       });
 
     //IMPORT ALL USERS AND THEIR INFO FROM A JSON FILE
-    content = USERS;
-    content &&
-      Object.keys(content).forEach(contentKey => {
-        const nestedContent = content[contentKey];
-        if (typeof nestedContent === "object") {
-          Object.keys(nestedContent).forEach(docTitle => {
-            firebase
-              .firestore()
-              .collection(contentKey)
-              .doc(docTitle)
-              .set(nestedContent[docTitle]);
-          });
-        }
-      });
+    // content = USERS;
+    // content &&
+    //   Object.keys(content).forEach(contentKey => {
+    //     const nestedContent = content[contentKey];
+    //     if (typeof nestedContent === "object") {
+    //       Object.keys(nestedContent).forEach(docTitle => {
+    //         firebase
+    //           .firestore()
+    //           .collection(contentKey)
+    //           .doc(docTitle)
+    //           .set(nestedContent[docTitle]);
+    //       });
+    //     }
+    //   });
 
   </script>>
 

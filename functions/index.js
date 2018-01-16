@@ -32,6 +32,7 @@ exports.Bite = functions.https.onRequest((request, response) => {
   actionMap.set('new_surface_intent', switchScreen);
   actionMap.set('actions_intent_OPTION', createBite);
   actionMap.set('archive', getArchivedOrders);
+  actionMap.set('returning', recommendationHandler);
   assistant.handleRequest(actionMap);
 
   function createBite(assistant) {
@@ -95,5 +96,9 @@ exports.Bite = functions.https.onRequest((request, response) => {
 
   function getArchivedOrders(assistant) {
     biteFunctions.getArchivedOrders(assistant);
+  }
+
+  function recommendationHandler(assistant) {
+    biteFunctions.recommendationHandler(assistant);
   }
 });

@@ -1102,7 +1102,6 @@ function iKnowWhatYourFavouriteSnackIs(assistant) {
                                 }
                             }).then(() => {
                                 count++;
-                                console.log(count + " :: " + snapshot.size);
                                 if (count == snapshot.size) {
                                     let now = new Date();
                                     let mostPopularSnack = popular(snackArray);
@@ -1229,6 +1228,57 @@ exports.getArchivedOrders = (assistant) => {
     }
 }
 
+exports.recommendationHandler = (assistant) => {
+    let userKey = assistant.data.userkey;
+    let reccomendationData = assistant.data.doc;
+    console.log(reccomendationData);
+
+    //!!!!!!!! add a check for when there are already items in the order
+
+    let freeSauce = false;
+    let i;
+
+    getSingleStore(reccomendationData.store).then(store => {
+        if (store) {
+            if (reccomendationData.order && reccomendationData.order != "null") {
+                let items = reccomendationData.order.toString().split(",");
+                items.forEach(item => {
+                    getProduct(store, item).then(snack => {
+                        if (snack) {
+                            console.log(store + " " + userKey + " " + snack.id);
+                            FS_Orders.doc(store).collection('orders').doc(userKey).collection('snacks').doc(item.toString()).set({
+                                amount: 1,
+                                name: snack.data().name,
+                                price: snack.data().price,
+                                isSauce: snack.data().isSauce
+                            });
+                            if (snack.data().isSauce) {
+                                freeSauce = true;
+                            }
+                        } else {
+                            let price = 50;
+                            if (freeSauce) {
+                                price = 0;
+                                freeSauce = false;
+                            }
+                            FS_Orders.doc(store).collection('orders').doc(userKey).collection('sauces').doc(item.toString()).set({
+                                price: price
+                            });
+                        }
+                        i++;
+                        if (i => items.length) {
+                            assistant.ask("Your order consisting of " + items.toString() + "has been added");
+                        }
+                    })
+                });
+            } else {
+                //partial reccomendation
+            }
+        } else {
+            assistant.ask("I can't give you any recommendations at this time. Anything else?")
+        }
+    })
+}
 
 /* 
                                                     PRIVATE FUNCTIONS
@@ -1245,6 +1295,7 @@ function getUserOrder(assistant, user) {
     let userKey = assistant.data.userkey;
 
     let message = " A Bite just Opened at ";
+    let moreMessage = "do you want to place an order here?";
     let speech;
 
     let todayHasBite = false;
@@ -1253,6 +1304,8 @@ function getUserOrder(assistant, user) {
     let storeNames = [];
     let openStores = [];
     let storeNameToday = "";
+
+    let storeID = [];
     //Get all open orders, check if the user has an order there.
     let getOpenOrders = FS_Orders.where('status', '==', 'open').get()
         .then(snapshot => {
@@ -1260,69 +1313,81 @@ function getUserOrder(assistant, user) {
                 if (moment().isSame(moment(doc.data().open_time), 'day')) {
                     todayHasBite = true;
                     message += doc.data().storename + ", ";
-                    storeNameToday = doc.data().storename;
+                    storeNameToday = 'order from ' + doc.data().storename;
+                    storeID.push(doc.data().store);
                 }
                 openStores.push(doc.data().storename);
                 stores.push(doc);
             });
             return stores;
         }).then(stores => {
-            if (stores.length != 0) {
-                let amount = 0;
-                for (let i = 0; i < stores.length; i++) {
-                    getLocked(userKey, stores[i].data().store).then(lockedStatus => {
-                        if (lockedStatus === false) {
-                            amountOfOrders++; //+1 order
-                            storeNames.push(stores[i].data().storename);
-                        }
-                        amount++;
-                        if (amount === stores.length) {
-                            if (user.data().admin) {
-                                assistant.setContext("admin", 10);
-                            }
-                            if (amountOfOrders == 0) {
-                                assistant.setContext("user_order", 5);
-                                assistant.data = { username: user.data().display_name, userkey: userKey };
-                                if (!todayHasBite) {
-                                    speech = `<speak> Welcome ${user.data().display_name}! No Bites have recently been opened, you can use the create command to open a new Bite or order from one of the older ${openStores.toString()} Bites. </speak>`;
-                                    assistant.ask(assistant.buildRichResponse()
-                                        .addSimpleResponse({ speech })
-                                        .addSuggestions(['order', 'Create a Bite', 'start', 'help', 'Never mind'])
-                                    );
-                                } else {
-                                    speech = `<speak> Welcome ${user.data().display_name}!` + message + ` do you want to place an order here?</speak>`;
-                                    assistant.ask(assistant.buildRichResponse()
-                                        .addSimpleResponse({ speech })
-                                        .addSuggestions(['order from ' + storeNameToday, 'Create a Bite', 'start', 'help', 'Never mind'])
-                                    );
+            FS_Users.doc(userKey.toString()).collection('habits').doc('orders').get()
+                .then(doc => {
+                    if (doc.data().order && storeID.indexOf(doc.data().store) != -1) {
+                        moreMessage = "do you want to order " + doc.data().order + "again?";
+                        storeNameToday = "I'll have the usual";
+                    }
+                    if (stores.length != 0) {
+                        let amount = 0;
+                        for (let i = 0; i < stores.length; i++) {
+                            getLocked(userKey, stores[i].data().store).then(lockedStatus => {
+                                if (lockedStatus === false) {
+                                    amountOfOrders++; //+1 order
+                                    storeNames.push(stores[i].data().storename);
                                 }
-                            } else {
-                                assistant.setContext("user_order", 2);
-                                assistant.setContext("edit_order", 2);
-                                assistant.data = { username: user.data().display_name, userkey: userKey };
+                                amount++;
+                                if (amount === stores.length) {
+                                    if (user.data().admin) {
+                                        assistant.setContext("admin", 10);
+                                    }
+                                    if (amountOfOrders == 0) {
+                                        assistant.setContext("user_order", 5);
+                                        assistant.data = { username: user.data().display_name, userkey: userKey };
+                                        if (!todayHasBite) {
+                                            speech = `<speak> Welcome ${user.data().display_name}! No Bites have recently been opened, you can use the create command to open a new Bite or order from one of the older ${openStores.toString()} Bites. </speak>`;
+                                            assistant.ask(assistant.buildRichResponse()
+                                                .addSimpleResponse({ speech })
+                                                .addSuggestions(['order', 'Create a Bite', 'start', 'help', 'Never mind'])
+                                            );
+                                        } else {
+                                            assistant.setContext("recommendation", 1);
+                                            if (doc.exists) {
+                                                assistant.data = { username: user.data().display_name, userkey: userKey, doc: doc.data() };
+                                            }
+                                            speech = `<speak> Welcome ${user.data().display_name}!` + message + moreMessage + ` </speak>`;
+                                            assistant.ask(assistant.buildRichResponse()
+                                                .addSimpleResponse({ speech })
+                                                .addSuggestions([storeNameToday, 'Create a Bite', 'start', 'help', 'Never mind'])
+                                            );
+                                        }
+                                    } else {
+                                        assistant.setContext("user_order", 2);
+                                        assistant.setContext("edit_order", 2);
+                                        assistant.data = { username: user.data().display_name, userkey: userKey };
 
-                                const speech = `<speak> Welcome ${user.data().display_name}! You have ${amountOfOrders} open order(s) at ${storeNames.toString()}.<break time="1"/>` +
-                                    `Would you like to edit a current order or start another?</speak>`;
-                                assistant.ask(assistant.buildRichResponse()
-                                    .addSimpleResponse({ speech })
-                                    .addSuggestions(['edit ' + storeNames[0], 'create a bite', 'start', 'Never mind'])
-                                );
-                            }
+                                        const speech = `<speak> Welcome ${user.data().display_name}! You have ${amountOfOrders} open order(s) at ${storeNames.toString()}.<break time="1"/>` +
+                                            `Would you like to edit a current order or start another?</speak>`;
+                                        assistant.ask(assistant.buildRichResponse()
+                                            .addSimpleResponse({ speech })
+                                            .addSuggestions(['edit ' + storeNames[0], 'create a bite', 'start', 'Never mind'])
+                                        );
+                                    }
+                                }
+                            })
                         }
-                    })
-                }
-            } else {
-                if (user.data().admin == true) {
-                    assistant.setContext("admin", 10);
-                }
-                assistant.setContext("user_order", 5);
-                assistant.data = { username: user.data().display_name, userkey: userKey };
-                speech = `<speak> Welcome ${user.data().display_name}! There are no open Bites, you can use the create command to open a new Bite. </speak>`;
-                assistant.ask(assistant.buildRichResponse()
-                    .addSimpleResponse({ speech })
-                    .addSuggestions(['Create a Bite', 'help', 'Never mind'])
-                );
-            }
+                    } else {
+                        if (user.data().admin == true) {
+                            assistant.setContext("admin", 10);
+                        }
+                        assistant.setContext("user_order", 5);
+                        assistant.data = { username: user.data().display_name, userkey: userKey };
+                        speech = `<speak> Welcome ${user.data().display_name}! There are no open Bites, you can use the create command to open a new Bite. </speak>`;
+                        assistant.ask(assistant.buildRichResponse()
+                            .addSimpleResponse({ speech })
+                            .addSuggestions(['Create a Bite', 'help', 'Never mind'])
+                        );
+                    }
+                })
         })
     iKnowWhatYourFavouriteSnackIs(assistant);
 };

@@ -1035,7 +1035,6 @@ exports.learnMode = (assistant) => {
     }
 };
 
-
 /*
 Learn the most common day, store snack and store for the current user.
 Recommendations will be given based on what the user orders most.
@@ -1046,69 +1045,76 @@ function iKnowWhatYourFavouriteSnackIs(assistant) {
     let snackArray = [];
     let sauceArray = [];
     let storeArray = [];
-    let combinedOrders = [];
     let day = [];
 
+    let snacksInThisStore = [];
+    let saucesInThisStore = [];
+    let combinedOrders = [];
     //loop through all archived Bites
     FS_Orders.where('status', '==', 'closed').get()
         .then(snapshot => {
             let count = 0;
             snapshot.forEach(doc => {
                 getArchivedOrder(userKey, doc.id)
-                    .then(snapshot => {
-                        let i = 0;
-                        if (snapshot.length > 0) {
-
-                            let snacksInThisStore = [];
-
-                            let dayoftheweek = moment(doc.data().open_time).isoWeekday(); // returns 1-7 where 1 is Monday and 7 is Sunday
-                            day.push(dayoftheweek.toString());
-
-                            storeArray.push(doc.data().store);
-
-                            //loop through all the snacks 
-                            snapshot.forEach(snack => {
-
-                                /*
-                                TODO
-                                Allow multiple snacks in 1 order to be the most popular snack as a combination
-                                place all items from 1 order in an array
-                                sort the array alphabetically
-                                turn it into a string
-                                compare the strings to find the most popular items string
-                                */
-
-                                snackArray.push(snack.data().name);
-
-                                snacksInThisStore.push(snack.data().name);
-
-                                i++;
-                                if (i == snapshot.size) {
-                                    combinedOrders.push(snacksInThisStore );
-                                }
-                            })
-                        } else {
-                            console.log("nope");
-                            //do nothing
-                        }
-                    }).then(() => {
+                    .then(snackSnapshot => {
                         getArchivedSauces(userKey, doc.id)
-                            .then(snapshot => {
-                                if (snapshot.length > 0) {
-                                    snapshot.forEach(sauce => {
-                                        sauceArray.push(sauce.data().name);
+                            .then(snapshotSauce => {
+                                let i = 0;
+                                if (snapshot.size > 0) {
+                                    let dayoftheweek = moment(doc.data().open_time).isoWeekday(); // returns 1-7 where 1 is Monday and 7 is Sunday
+                                    day.push(dayoftheweek.toString());
+
+                                    storeArray.push(doc.data().store);
+
+                                    //loop through all the snacks
+                                    snackSnapshot.forEach(snack => {
+
+                                        snackArray.push(snack.data().name);
+                                        snacksInThisStore.push(snack.data().name);
+                                        i++;
+                                        if (i == snackSnapshot.length) {
+                                            let orderSauceString = "";
+                                            if (snapshotSauce.length > 0) {
+                                                snapshotSauce.forEach(sauce => {
+                                                    sauceArray.push(sauce.data().name);
+                                                    saucesInThisStore.push(sauce.data().name);
+                                                })
+                                                saucesInThisStore.sort();
+                                                saucesInThisStore.forEach(sauceString => {
+                                                    orderSauceString += sauceString + ", ";
+                                                })
+                                                saucesInThisStore.length = 0;
+                                            }
+                                            let orderSnackString = "";
+                                            snacksInThisStore.sort();
+                                            snacksInThisStore.forEach(snackString => {
+                                                orderSnackString += snackString + ", ";
+                                            })
+                                            let orderString = orderSnackString + orderSauceString;
+                                            console.log(orderString);
+                                            combinedOrders.push(orderString);
+                                            snacksInThisStore.length = 0;
+                                        }
                                     })
+                                } else {
+                                    console.log("nope");
+                                    //do nothing
                                 }
                             }).then(() => {
                                 count++;
+                                console.log(count + " :: " + snapshot.size);
                                 if (count == snapshot.size) {
                                     let now = new Date();
                                     let mostPopularSnack = popular(snackArray);
                                     let mostPopularDay = popular(day);
                                     let mostPopularStore = popular(storeArray);
                                     let mostPopularSauce = popular(sauceArray);
+                                    let mostPopularOrder = popular(combinedOrders);
                                     if (!mostPopularSauce) {
                                         mostPopularSauce = "null";
+                                    }
+                                    if (!mostPopularOrder) {
+                                        mostPopularOrder = "null";
                                     }
 
                                     if (mostPopularSnack && mostPopularDay && mostPopularStore != null) {
@@ -1117,7 +1123,7 @@ function iKnowWhatYourFavouriteSnackIs(assistant) {
                                             day: mostPopularDay,
                                             store: mostPopularStore,
                                             sauce: mostPopularSauce,
-                                            lastUpdate: now.setMinutes(now.getMinutes() + 0)
+                                            order: mostPopularOrder
                                         }).then(() => {
                                             console.log("updated");
                                         })

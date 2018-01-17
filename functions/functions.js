@@ -68,6 +68,7 @@ exports.biteUser = (assistant) => {
             });
             if (i == 1) {
                 //get the users current open orders and finish the welcome intent
+                iKnowWhatYourFavouriteSnackIs(assistant);
                 getUserOrder(assistant, userData);
             } else if (accestoken) {
                 const https = require('https');
@@ -97,24 +98,25 @@ exports.biteUser = (assistant) => {
                                             db.collection('users').doc(doc.id).update({ access_token: accestoken });
 
                                             //get the users current open orders and finish the welcome intent
+                                            iKnowWhatYourFavouriteSnackIs(assistant);
                                             getUserOrder(assistant, userData);
                                         });
                                     } else {
                                         //move4mobile email but without an account, create a new account
                                         //name can be empty
-                                        let newPostRef = db.collection('users').doc().push({
+                                        let newPostRef = db.collection('users').add({
                                             access_token: accestoken,
                                             admin: false,
                                             display_name: "NEW USER",
                                             email: parsedData.emails[0].value,
                                             photo_url: parsedData.image.url
-                                        });
-
-                                        assistant.data = { userkey: newPostRef.key };
-
-                                        let namePermission = assistant.SupportedPermissions.NAME;
-                                        // Ask for name permission since the google+ api often doesn't return the name
-                                        assistant.askForPermission('Looks like you\'re new to Bite. To sign you up', namePermission);
+                                        }).then(doc => {
+                                            console.log(doc.id);
+                                            assistant.data = { userkey: doc.id };
+                                            let namePermission = assistant.SupportedPermissions.NAME;
+                                            // Ask for name permission since the google+ api often doesn't return the name
+                                            assistant.askForPermission('Looks like you\'re new to Bite. To sign you up', namePermission);
+                                        })
                                     }
                                 })
                             // } else {
@@ -1115,18 +1117,40 @@ function iKnowWhatYourFavouriteSnackIs(assistant) {
                                     if (!mostPopularOrder) {
                                         mostPopularOrder = "null";
                                     }
+                                    let storeName = mostPopularStore;
+                                    if (mostPopularStore) {
+                                        FS_Stores.doc(mostPopularStore.toString()).get()
+                                            .then(store => {
+                                                storeName = store.data().name;
 
-                                    if (mostPopularSnack && mostPopularDay && mostPopularStore != null) {
-                                        FS_Users.doc(userKey).collection("habits").doc("orders").set({
-                                            snack: mostPopularSnack,
-                                            day: mostPopularDay,
-                                            store: mostPopularStore,
-                                            sauce: mostPopularSauce,
-                                            order: mostPopularOrder
-                                        }).then(() => {
-                                            console.log("updated");
-                                        })
+                                                if (mostPopularSnack && mostPopularDay && mostPopularStore != null) {
+                                                    FS_Users.doc(userKey).collection("habits").doc("orders").set({
+                                                        snack: mostPopularSnack,
+                                                        day: mostPopularDay,
+                                                        store: mostPopularStore,
+                                                        sauce: mostPopularSauce,
+                                                        order: mostPopularOrder,
+                                                        storeName: storeName
+                                                    }).then(() => {
+                                                        console.log("updated");
+                                                    })
+                                                }
+                                            })
+                                    } else {
+                                        if (mostPopularSnack && mostPopularDay && mostPopularStore != null) {
+                                            FS_Users.doc(userKey).collection("habits").doc("orders").set({
+                                                snack: mostPopularSnack,
+                                                day: mostPopularDay,
+                                                store: mostPopularStore,
+                                                sauce: mostPopularSauce,
+                                                order: mostPopularOrder
+                                            }).then(() => {
+                                                console.log("updated");
+                                            })
+                                        }
                                     }
+
+
                                 }
                             })
                     })
@@ -1233,8 +1257,6 @@ exports.recommendationHandler = (assistant) => {
     let reccomendationData = assistant.data.doc;
     console.log(reccomendationData);
 
-    //!!!!!!!! add a check for when there are already items in the order
-
     let freeSauce = false;
     let i;
 
@@ -1243,33 +1265,37 @@ exports.recommendationHandler = (assistant) => {
             if (reccomendationData.order && reccomendationData.order != "null") {
                 let items = reccomendationData.order.toString().split(",");
                 items.forEach(item => {
-                    getProduct(store, item).then(snack => {
-                        if (snack) {
-                            console.log(store + " " + userKey + " " + snack.id);
-                            FS_Orders.doc(store).collection('orders').doc(userKey).collection('snacks').doc(item.toString()).set({
-                                amount: 1,
-                                name: snack.data().name,
-                                price: snack.data().price,
-                                isSauce: snack.data().isSauce
-                            });
-                            if (snack.data().isSauce) {
-                                freeSauce = true;
+                    if (item != " ") {
+                        getProduct(reccomendationData.store.toString(), item).then(snack => {
+                            if (snack) {
+                                FS_Orders.doc(store).collection('orders').doc(userKey).collection('snacks').doc(item.toString()).set({
+                                    amount: 1,
+                                    name: snack.data().name,
+                                    price: snack.data().price,
+                                    isSauce: snack.data().isSauce
+                                });
+                                if (snack.data().isSauce) {
+                                    freeSauce = true;
+                                }
+                            } else {
+                                let price = 50;
+                                if (freeSauce) {
+                                    price = 0;
+                                    freeSauce = false;
+                                }
+                                FS_Orders.doc(store).collection('orders').doc(userKey).collection('sauces').doc(item.toString()).set({
+                                    price: price
+                                });
                             }
-                        } else {
-                            let price = 50;
-                            if (freeSauce) {
-                                price = 0;
-                                freeSauce = false;
-                            }
-                            FS_Orders.doc(store).collection('orders').doc(userKey).collection('sauces').doc(item.toString()).set({
-                                price: price
+                            FS_Orders.doc(store).collection('orders').doc(userKey).set({
+                                locked: true
                             });
-                        }
-                        i++;
-                        if (i => items.length) {
-                            assistant.ask("Your order consisting of " + items.toString() + "has been added");
-                        }
-                    })
+                            i++;
+                            if (i => items.length) {
+                                assistant.ask("Your order consisting of a " + items.toString() + "has been added");
+                            }
+                        })
+                    }
                 });
             } else {
                 //partial reccomendation
@@ -1323,9 +1349,11 @@ function getUserOrder(assistant, user) {
         }).then(stores => {
             FS_Users.doc(userKey.toString()).collection('habits').doc('orders').get()
                 .then(doc => {
-                    if (doc.data().order && storeID.indexOf(doc.data().store) != -1) {
-                        moreMessage = "do you want to order " + doc.data().order + "again?";
-                        storeNameToday = "I'll have the usual";
+                    if (doc.exists) {
+                        if (doc.data().order && storeID.indexOf(doc.data().store) != -1) {
+                            moreMessage = "do you want to order a " + doc.data().order + "from " + doc.data().storeName + " again?";
+                            storeNameToday = "I'll have the usual";
+                        }
                     }
                     if (stores.length != 0) {
                         let amount = 0;
@@ -1389,7 +1417,6 @@ function getUserOrder(assistant, user) {
                     }
                 })
         })
-    iKnowWhatYourFavouriteSnackIs(assistant);
 };
 
 //returns all items in an user's order

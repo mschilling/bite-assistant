@@ -109,7 +109,9 @@ exports.biteUser = (assistant) => {
                                             admin: false,
                                             display_name: "NEW USER",
                                             email: parsedData.emails[0].value,
-                                            photo_url: parsedData.image.url
+                                            photo_url: parsedData.image.url,
+                                            orders: 0,
+                                            spend: 0
                                         }).then(doc => {
                                             console.log(doc.id);
                                             assistant.data = { userkey: doc.id };
@@ -863,44 +865,59 @@ exports.listTotalOrder = (assistant) => {
     const storeContext = assistant.data.userStore; //get the store that was saved during finishOrder();
     let userkey = assistant.data.userkey; //get the userID
     let savedOrder = assistant.data.saveOrder; //get the orders key
+    let storeText = savedOrder.replace(/[0-9]/g, '');
 
-    let nameArray = [];
-    let amountArray = [];
     let count = 0;
-    let orderString = "";
-    let orderprice = 0;
+    let list = assistant.buildList(`Choose your order`);
     let speech;
 
     //for each user that has an order in this store
     FS_Orders.doc(savedOrder).collection('orders').get()
-        .then(snapshot => {
+        .then(snapshot => {//foreach user in the order
             if (snapshot.size > 0) {
                 snapshot.forEach(doc => {
                     //get all snacks of the user and save them
                     getOrder(doc.id, storeContext).then(snacks => {
-                        snacks.forEach(doc => {
-                            let index = nameArray.indexOf(doc.data().name);
-                            if (index === 0) {
-                                amountArray[index] = (amountArray[index] + doc.data().amount);
-                            } else {
-                                nameArray.push(doc.data().name);
-                                amountArray.push(doc.data().amount);
-                            }
-                            orderprice += doc.data().price;
-                        })
-                        count++;
-                        if (count == snapshot.size) {
+                        FS_Users.doc(userkey).get().then(user => {
+                            //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! CALCULATE THE SAUCE PRICES WITH DISCOUNTS
+                            let nameArray = [];
+                            let amountArray = [];
+                            let orderString = "";
+                            let orderprice = 0;
+
+                            snacks.forEach(doc => {//foreach snack in the user order
+                                let index = nameArray.indexOf(doc.data().name);
+                                if (index === 0) {
+                                    amountArray[index] = (amountArray[index] + doc.data().amount);
+                                } else {
+                                    nameArray.push(doc.data().name);
+                                    amountArray.push(doc.data().amount);
+                                }
+                                orderprice += doc.data().price;
+                            })
                             for (let i = 0; i < amountArray.length; i++) {
-                                orderString += `<say-as interpret-as="cardinal">` + amountArray[i] + "</say-as> " + nameArray[i] + ", ";
+                                orderString += amountArray[i] + " " + nameArray[i] + ", ";
                             }
-                            if (count != 0) {
-                                speech = `<speak> The combined order of all users consists of: ${orderString} with a total cost of <say-as interpret-as="currency">EUR${orderprice / 100}</say-as>. Maybe it's time to place the order! </speak>`;
-                                assistant.tell(speech);
-                            } else {
-                                speech = `<speak> Oops, something went wrong, try again for a different store.  </speak>`;
-                                assistant.ask(speech);
+                            list.addItems(assistant.buildOptionItem("Placeholder" + count, [])
+                                .setTitle(user.data().display_name + "     €" + (orderprice / 100))
+                                .setDescription(orderString)
+                            )
+                            count++;
+                            if (count == snapshot.size) {
+                                if (count > 1) {
+                                    assistant.askWithList(`These are the users that ordered from ${storeText} `, list);
+                                } else if (count == 1) {
+                                    list.addItems(assistant.buildOptionItem("placeholder", [`placeholder`])
+                                        .setTitle("placeholder")
+                                        .setDescription(`Please don't click me QwQ`)
+                                    )
+                                    assistant.askWithList(`These are the users that ordered from ${storeText} `, list);
+                                } else {
+                                    speech = `<speak> Oops, something went wrong, try again for a different store.  </speak>`;
+                                    assistant.ask(speech);
+                                }
                             }
-                        }
+                        })
                     })
                 })
             } else {

@@ -487,6 +487,7 @@ exports.quickOrder = (assistant) => {
                                     if (item) {
                                         //check if the user has already placed an order at this store
                                         if (!doc.exists) {
+                                            checkOrder = 1;
                                             //set locked
                                             FS_Orders.doc(id).collection('orders').doc(userKey).set({
                                                 locked: false
@@ -498,17 +499,18 @@ exports.quickOrder = (assistant) => {
                                                 price: (item.data().price * amountContext[snackContext.indexOf(entry)]),
                                                 isSauce: item.data().isSauce,
                                                 hasSauce: item.data().hasSauce
+                                            }).then(() => {
+                                                snackCount++;
+                                                snackString += `<say-as interpret-as="cardinal">${amountContext[snackContext.indexOf(entry)]}</say-as> ${item.data().name}, `;
+                                                if (snackCount == snackContext.length) {
+                                                    return response();
+                                                }
                                             });
-                                            snackString += `<say-as interpret-as="cardinal">${amountContext[snackContext.indexOf(entry)]}</say-as> ${item.data().name}, `;
-                                            snackCount++;
-                                            checkOrder = 1;
-                                            if (snackCount == snackContext.length) {
-                                                return response();
-                                            }
                                         } else {
                                             //check if the item is already in the user's order
                                             FS_Orders.doc(id).collection('orders').doc(userKey).collection('snacks').doc(item.id).get()
                                                 .then(currentItem => {
+                                                    checkOrder = 1;
                                                     if (!currentItem.exists) {
                                                         FS_Orders.doc(id).collection('orders').doc(userKey).collection('snacks').doc(item.id).set({
                                                             amount: amountContext[snackContext.indexOf(entry)],
@@ -516,8 +518,13 @@ exports.quickOrder = (assistant) => {
                                                             price: (item.data().price * amountContext[snackContext.indexOf(entry)]),
                                                             isSauce: item.data().isSauce,
                                                             hasSauce: item.data().hasSauce
+                                                        }).then(() => {
+                                                            snackCount++;
+                                                            snackString += `<say-as interpret-as="cardinal">${amountContext[snackContext.indexOf(entry)]}</say-as> ${item.data().name}, `;
+                                                            if (snackCount == snackContext.length) {
+                                                                return response();
+                                                            }
                                                         });
-                                                        snackString += `<say-as interpret-as="cardinal">${amountContext[snackContext.indexOf(entry)]}</say-as> ${item.data().name}, `;
                                                     } else {
                                                         //item is already in the order, update the amount
                                                         FS_Orders.doc(id).collection('orders').doc(userKey).collection('snacks').doc(item.id).update({
@@ -526,13 +533,13 @@ exports.quickOrder = (assistant) => {
                                                             price: (item.data().price * (amountContext[snackContext.indexOf(entry)] + currentItem.data().amount)),
                                                             isSauce: item.data().isSauce,
                                                             hasSauce: item.data().hasSauce
+                                                        }).then(() => {
+                                                            snackCount++;
+                                                            snackString += `<say-as interpret-as="cardinal">${amountContext[snackContext.indexOf(entry)]}</say-as> ${item.data().name}, `;
+                                                            if (snackCount == snackContext.length) {
+                                                                return response();
+                                                            }
                                                         });
-                                                        snackString += `<say-as interpret-as="cardinal">${amountContext[snackContext.indexOf(entry)]}</say-as> ${item.data().name}, `;
-                                                    }
-                                                    snackCount++;
-                                                    checkOrder = 1;
-                                                    if (snackCount == snackContext.length) {
-                                                        return response();
                                                     }
                                                 })
                                         }
@@ -1262,7 +1269,7 @@ exports.recommendationHandler = (assistant) => {
                                     });
                                     i++;
                                     if (i => items.length) {
-                                        assistant.ask("Your order consisting of a " + items.toString() + "has been added");
+                                        assistant.ask("Your order consisting of a " + items.toString() + " has been added");
                                     }
                                 })
                             }

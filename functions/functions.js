@@ -2,12 +2,11 @@
 
 const functions = require('firebase-functions');
 
-//firebase database ref
+// //firebase database ref
 const admin = require('firebase-admin');
-admin.initializeApp(functions.config().firebase);
 
-//FIRESTORE
-var db = admin.firestore();
+// //FIRESTORE
+const db = admin.firestore();
 
 //cloud firestore refs
 const FS_Orders = db.collection('orders');
@@ -68,7 +67,7 @@ exports.biteUser = (assistant) => {
             });
             if (i == 1) {
                 //get the users current open orders and finish the welcome intent
-                iKnowWhatYourFavouriteSnackIs(assistant);
+                //iKnowWhatYourFavouriteSnackIs(assistant);
                 getUserOrder(assistant, userData);
             } else if (accestoken) {
                 const https = require('https');
@@ -98,7 +97,7 @@ exports.biteUser = (assistant) => {
                                             db.collection('users').doc(doc.id).update({ access_token: accestoken });
 
                                             //get the users current open orders and finish the welcome intent
-                                            iKnowWhatYourFavouriteSnackIs(assistant);
+                                            //iKnowWhatYourFavouriteSnackIs(assistant);
                                             getUserOrder(assistant, userData);
                                         });
                                     } else {
@@ -644,6 +643,9 @@ exports.AdminFunctions = (assistant) => {
         let num = param.match(/\d+/g);
         let letr = param.match(/[a-zA-Z]+/g);
         console.log(num + " " + letr);
+        if (letr == "Placeholder") {
+            assistant.ask("You can say 'close the Bite' to close this Bite.");
+        }
 
         changeContext = letr + "";
         storeContext = num + "";
@@ -868,8 +870,13 @@ exports.listTotalOrder = (assistant) => {
     let storeText = savedOrder.replace(/[0-9]/g, '');
 
     let count = 0;
-    let list = assistant.buildList(`Choose your order`);
+    let list = assistant.buildList(`Order List: `);
     let speech;
+
+    let param = "Placeholder";
+    if (assistant.getContext("copyright")) {
+        param = "";
+    }
 
     //for each user that has an order in this store
     FS_Orders.doc(savedOrder).collection('orders').get()
@@ -878,34 +885,58 @@ exports.listTotalOrder = (assistant) => {
                 snapshot.forEach(doc => {
                     //get all snacks of the user and save them
                     getOrder(doc.id, storeContext).then(snacks => {
-                        FS_Users.doc(userkey).get().then(user => {
-                            //!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! CALCULATE THE SAUCE PRICES WITH DISCOUNTS
+                        FS_Users.doc(doc.id.toString()).get().then(user => {
+
                             let nameArray = [];
                             let amountArray = [];
                             let orderString = "";
                             let orderprice = 0;
+                            let amountOfSauces = [];
+                            let hasSauce = [];
 
                             snacks.forEach(doc => {//foreach snack in the user order
-                                let index = nameArray.indexOf(doc.data().name);
-                                if (index === 0) {
-                                    amountArray[index] = (amountArray[index] + doc.data().amount);
-                                } else {
-                                    nameArray.push(doc.data().name);
-                                    amountArray.push(doc.data().amount);
+
+                                nameArray.push(doc.data().name);
+                                amountArray.push(doc.data().amount);
+
+                                if (doc.data().isSauce) {
+                                    amountOfSauces += doc.data().amount;
+                                }
+                                if (doc.data().hasSauce) {
+                                    hasSauce += doc.data().amount;
                                 }
                                 orderprice += doc.data().price;
                             })
                             for (let i = 0; i < amountArray.length; i++) {
-                                orderString += amountArray[i] + " " + nameArray[i] + ", ";
+                                if (param == "") {
+                                    orderString += nameArray[i] + ",";
+                                } else {
+                                    orderString += amountArray[i] + " " + nameArray[i] + ", ";
+                                }
                             }
-                            list.addItems(assistant.buildOptionItem("Placeholder" + count, [])
-                                .setTitle(user.data().display_name + "     €" + (orderprice / 100))
+
+                            let discountNumber = amountOfSauces - hasSauce;
+                            let amountOfDiscounts = 0;
+                            //more sauces than discounts
+                            if (discountNumber > 0) {
+                                amountOfDiscounts = amountOfSauces - discountNumber;
+                            } else if (discountNumber == 0) {
+                                amountOfDiscounts = hasSauce;
+                            } else {
+                                amountOfDiscounts = hasSauce + discountNumber;
+                            }
+                            if (amountOfDiscounts > 0) {
+                                orderprice = orderprice - (amountOfDiscounts * 50);
+                            }
+
+                            list.addItems(assistant.buildOptionItem(param + orderString + count, [])
+                                .setTitle(user.data().display_name + " €" + (orderprice / 100))
                                 .setDescription(orderString)
                             )
                             count++;
                             if (count == snapshot.size) {
                                 if (count > 1) {
-                                    assistant.askWithList(`These are the users that ordered from ${storeText} `, list);
+                                    assistant.askWithList(`These are the users that ordered from ${storeText}. `, list);
                                 } else if (count == 1) {
                                     list.addItems(assistant.buildOptionItem("placeholder", [`placeholder`])
                                         .setTitle("placeholder")
@@ -1046,143 +1077,6 @@ exports.learnMode = (assistant) => {
     }
 };
 
-/*
-Learn the most common day, store snack and store for the current user.
-Recommendations will be given based on what the user orders most.
-*/
-function iKnowWhatYourFavouriteSnackIs(assistant) {
-    let userKey = assistant.data.userkey;
-
-    let snackArray = [];
-    let sauceArray = [];
-    let storeArray = [];
-    let day = [];
-
-    let snacksInThisStore = [];
-    let saucesInThisStore = [];
-    let combinedOrders = [];
-    //loop through all archived Bites
-    FS_Orders.where('status', '==', 'closed').get()
-        .then(snapshot => {
-            let count = 0;
-            snapshot.forEach(doc => {
-                getArchivedOrder(userKey, doc.id)
-                    .then(snackSnapshot => {
-                        let i = 0;
-                        if (snapshot.size > 0) {
-                            let dayoftheweek = moment(doc.data().open_time).isoWeekday(); // returns 1-7 where 1 is Monday and 7 is Sunday
-                            day.push(dayoftheweek.toString());
-                            storeArray.push(doc.data().store);
-
-                            //loop through all the snacks
-                            snackSnapshot.forEach(snack => {
-                                if (snack.data().isSauce) {
-                                    sauceArray.push(snack.data().name);
-                                    saucesInThisStore.push(snack.data().name);
-                                } else {
-                                    snackArray.push(snack.data().name);
-                                    snacksInThisStore.push(snack.data().name);
-                                }
-                                i++;
-
-                                if (i == snackSnapshot.length) {
-                                    let orderSauceString = "";
-                                    if (saucesInThisStore.length > 0) {
-                                        saucesInThisStore.sort();
-                                        saucesInThisStore.forEach(sauceString => {
-                                            orderSauceString += sauceString + ",";
-                                        })
-                                        saucesInThisStore.length = 0;
-                                    }
-                                    let orderSnackString = "";
-                                    snacksInThisStore.sort();
-                                    snacksInThisStore.forEach(snackString => {
-                                        orderSnackString += snackString + ",";
-                                    })
-                                    let orderString = orderSnackString + orderSauceString;
-                                    //console.log(orderString);
-                                    combinedOrders.push(orderString);
-                                    snacksInThisStore.length = 0;
-                                }
-                            })
-                        } else {
-                            console.log("nope");
-                            //do nothing
-                        }
-                    }).then(() => {
-                        count++;
-                        if (count == snapshot.size) {
-                            let now = new Date();
-                            let mostPopularSnack = popular(snackArray);
-                            let mostPopularDay = popular(day);
-                            let mostPopularStore = popular(storeArray);
-                            let mostPopularSauce = popular(sauceArray);
-                            let mostPopularOrder = popular(combinedOrders);
-                            if (!mostPopularSauce) {
-                                mostPopularSauce = "null";
-                            }
-                            if (!mostPopularOrder) {
-                                mostPopularOrder = "null";
-                            }
-                            let storeName = mostPopularStore;
-                            if (mostPopularStore) {
-                                FS_Stores.doc(mostPopularStore.toString()).get()
-                                    .then(store => {
-                                        storeName = store.data().name;
-
-                                        if (mostPopularSnack && mostPopularDay && mostPopularStore != null) {
-                                            FS_Users.doc(userKey).collection("habits").doc("orders").set({
-                                                snack: mostPopularSnack,
-                                                day: mostPopularDay,
-                                                store: mostPopularStore,
-                                                sauce: mostPopularSauce,
-                                                order: mostPopularOrder,
-                                                storeName: storeName
-                                            }).then(() => {
-                                                console.log("updated");
-                                            })
-                                        }
-                                    })
-                            } else {
-                                if (mostPopularSnack && mostPopularDay && mostPopularStore != null) {
-                                    FS_Users.doc(userKey).collection("habits").doc("orders").set({
-                                        snack: mostPopularSnack,
-                                        day: mostPopularDay,
-                                        store: mostPopularStore,
-                                        sauce: mostPopularSauce,
-                                        order: mostPopularOrder
-                                    }).then(() => {
-                                        console.log("updated");
-                                    })
-                                }
-                            }
-                        }
-                    })
-            })
-        })
-
-    //returns null if there was no most popular item
-    function popular(arr) {
-        arr.sort();
-        var max = 0, result, freq = 0;
-        for (var i = 0; i < arr.length; i++) {
-            //console.log(arr[i]);
-            if (arr[i] === arr[i + 1]) {
-                freq++;
-            }
-            else {
-                freq = 0;
-            }
-            if (freq > max) {
-                result = arr[i];
-                max = freq;
-            }
-        }
-        console.log(result);
-        return result;
-    }
-}
-
 //generates a list of all previous orders at the specified store, then tells the order 
 exports.getArchivedOrders = (assistant) => {
     let userKey = assistant.data.userkey;
@@ -1259,6 +1153,13 @@ exports.getArchivedOrders = (assistant) => {
 exports.recommendationHandler = (assistant) => {
     let userKey = assistant.data.userkey;
     let reccomendationData = assistant.data.doc;
+    const param = assistant.getSelectedOption();
+    if (param) {
+        let letr = param.replace(/[0-9]/g, '');
+        console.log(param + " :: " + letr);
+        reccomendationData.store = assistant.data.userStore;
+        reccomendationData.order = letr;
+    }
     console.log(reccomendationData);
     let o = 0;
     let i = 0;
@@ -1286,7 +1187,12 @@ exports.recommendationHandler = (assistant) => {
                                     });
                                     i++;
                                     if (i => items.length) {
-                                        assistant.ask("Your order consisting of a " + items.toString() + " has been added");
+                                        if (param) {
+                                            assistant.ask("You have successfully copied an order. The following items were added to your order: " + items.toString());
+                                        } else {
+                                            assistant.ask("Your order consisting of a " + items.toString() + " has been added");
+                                        }
+
                                     }
                                 })
                             }
@@ -1378,12 +1284,12 @@ function getUserOrder(assistant, user) {
                                         } else {
                                             assistant.setContext("recommendation", 1);
                                             if (doc.exists) {
-                                                assistant.data = { username: user.data().display_name, userkey: userKey, doc: doc.data() };
+                                                assistant.data = { username: user.data().display_name, userkey: userKey, doc: doc.data(), saveOrder: stores[i].id, userStore: stores[i].data().store };
                                             }
                                             speech = `<speak> Welcome ${user.data().display_name}!` + message + moreMessage + ` </speak>`;
                                             assistant.ask(assistant.buildRichResponse()
                                                 .addSimpleResponse({ speech })
-                                                .addSuggestions([storeNameToday, 'Create a Bite', 'start', 'help', 'Never mind'])
+                                                .addSuggestions([storeNameToday, 'copyright', 'Create a Bite', 'start', 'help', 'Never mind'])
                                             );
                                         }
                                     } else {
@@ -1439,7 +1345,19 @@ function getOrder(user, store) {
         })
 }
 
-//returns all items in an user's order
+//returns all items in an user's closed order
+exports.getArchivedOrder = (user, store) => {
+    let snacks = [];
+    return FS_Orders.doc(store.toString()).collection('orders').doc(user.toString()).collection('snacks').get()
+        .then(snapshot => {
+            snapshot.forEach(doc => {
+                snacks.push(doc);
+            });
+            return snacks;
+        })
+}
+
+//returns all items in an user's closed order
 function getArchivedOrder(user, store) {
     let snacks = [];
     return FS_Orders.doc(store.toString()).collection('orders').doc(user.toString()).collection('snacks').get()

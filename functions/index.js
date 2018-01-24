@@ -118,6 +118,8 @@ exports.Bite = functions.https.onRequest((request, response) => {
   }
 });
 
+//Creates an array with all users that ordered from the Bite that just closed
+//Updates the habits for the users in that Bite
 exports.biteClosed = functions.firestore
   .document('orders/{biteId}')
   .onUpdate((event) => {
@@ -285,4 +287,46 @@ exports.biteClosed = functions.firestore
       console.log('Already Has Users');
       return 'done';
     }
+  });
+
+  //Notification Functions
+  exports.userChanged = functions.firestore
+  .document('users/{uid}')
+  .onUpdate((event) => {
+    const oldToken = event.data.previous.data().token || '';
+    const token = event.data.data().token || null;
+    if (token && token != oldToken) {
+      return admin.messaging().subscribeToTopic(token, 'openBite')
+        .then((response) => {
+          console.log(response);
+        })
+        .catch((error) => {
+          console.log(error);
+        });
+    } else {
+      return 'done';
+    }
+  });
+
+exports.biteOpened = functions.firestore
+  .document('orders/{biteId}')
+  .onCreate((event) => {
+    const payload = {
+      data: {
+        title: 'Nieuwe Bite!',
+        message: `Er is een Bite geopend voor ${event.data.data().storename}`,
+      }
+    };
+
+    const options = {
+      timeToLive: 1800,
+    };
+
+    return admin.messaging().sendToTopic('openBite', payload, options)
+      .then((response) => {
+        console.log(response);
+      })
+      .catch((error) => {
+        console.log(error);
+      });
   });

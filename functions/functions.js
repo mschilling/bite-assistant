@@ -62,44 +62,44 @@ exports.biteUser = (assistant) => {
                         if (parsedData.emails) {
                             //check if the user is using a move4mobile google account
                             //remove this line if you just want to check if the email matches with the one in the database
-                            //if (parsedData.domain == "move4mobile.com" || parsedData.emails[0].value == "biteexample@gmail.com") {
-                            let emailQuery = FS_Users.where('email', '==', parsedData.emails[0].value).get()
-                                .then(snapshot => {
-                                    if (snapshot.size > 0) {
-                                        snapshot.forEach(doc => {
-                                            console.log(doc.id, '=>', doc.data());
-                                            assistant.data = { username: doc.data().display_name, userkey: doc.id };
-                                            userData = doc;
-                                            db.collection('users').doc(doc.id).update({ access_token: accestoken });
+                            if (parsedData.domain == "move4mobile.com" || parsedData.emails[0].value == "biteexample@gmail.com") {
+                                let emailQuery = FS_Users.where('email', '==', parsedData.emails[0].value).get()
+                                    .then(snapshot => {
+                                        if (snapshot.size > 0) {
+                                            snapshot.forEach(doc => {
+                                                console.log(doc.id, '=>', doc.data());
+                                                assistant.data = { username: doc.data().display_name, userkey: doc.id };
+                                                userData = doc;
+                                                db.collection('users').doc(doc.id).update({ access_token: accestoken });
 
-                                            //get the users current open orders and finish the welcome intent
-                                            //iKnowWhatYourFavouriteSnackIs(assistant);
-                                            getUserOrder(assistant, userData);
-                                        });
-                                    } else {
-                                        //move4mobile email but without an account, create a new account
-                                        //name can be empty
-                                        let newPostRef = db.collection('users').add({
-                                            access_token: accestoken,
-                                            admin: false,
-                                            display_name: "NEW USER",
-                                            email: parsedData.emails[0].value,
-                                            photo_url: parsedData.image.url,
-                                            orders: 0,
-                                            spend: 0
-                                        }).then(doc => {
-                                            console.log(doc.id);
-                                            assistant.data = { userkey: doc.id };
-                                            let namePermission = assistant.SupportedPermissions.NAME;
-                                            // Ask for name permission since the google+ api often doesn't return the name
-                                            assistant.askForPermission('Looks like you\'re new to Bite. To sign you up', namePermission);
-                                        })
-                                    }
-                                })
-                            // } else {
-                            //     speech = `<speak> Sorry, this app has an email domain restriction and does not allow external users. </speak>`;
-                            //     assistant.tell(speech);
-                            // }
+                                                //get the users current open orders and finish the welcome intent
+                                                //iKnowWhatYourFavouriteSnackIs(assistant);
+                                                getUserOrder(assistant, userData);
+                                            });
+                                        } else {
+                                            //move4mobile email but without an account, create a new account
+                                            //name can be empty
+                                            let newPostRef = db.collection('users').add({
+                                                access_token: accestoken,
+                                                admin: false,
+                                                display_name: "NEW USER",
+                                                email: parsedData.emails[0].value,
+                                                photo_url: parsedData.image.url,
+                                                orders: 0,
+                                                spend: 0
+                                            }).then(doc => {
+                                                console.log(doc.id);
+                                                assistant.data = { userkey: doc.id };
+                                                let namePermission = assistant.SupportedPermissions.NAME;
+                                                // Ask for name permission since the google+ api often doesn't return the name
+                                                assistant.askForPermission('Looks like you\'re new to Bite. To sign you up', namePermission);
+                                            })
+                                        }
+                                    })
+                            } else {
+                                speech = `<speak> Sorry, this app has an email domain restriction and does not allow external users. </speak>`;
+                                assistant.tell(speech);
+                            }
                         } else {
                             speech = `<speak> Something went wrong. If this problem persists, try unlinking the app through the app store. </speak>`;
                             assistant.tell(speech);

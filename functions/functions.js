@@ -879,7 +879,7 @@ exports.listTotalOrder = (assistant) => {
     }
 
     //for each user that has an order in this store
-    FS_Orders.doc(savedOrder).collection('orders').get()
+    FS_Orders.doc(savedOrder.toString()).collection('orders').get()
         .then(snapshot => {//foreach user in the order
             if (snapshot.size > 0) {
                 snapshot.forEach(doc => {
@@ -944,7 +944,7 @@ exports.listTotalOrder = (assistant) => {
                                     )
                                     assistant.askWithList(`These are the users that ordered from ${storeText} `, list);
                                 } else {
-                                    speech = `<speak> Oops, something went wrong, try again for a different store.  </speak>`;
+                                    speech = `<speak> Something went wrong, try again for a different store.  </speak>`;
                                     assistant.ask(speech);
                                 }
                             }
@@ -952,7 +952,7 @@ exports.listTotalOrder = (assistant) => {
                     })
                 })
             } else {
-                speech = `<speak> Oops, something went wrong, try again for a different store.  </speak>`;
+                speech = `<speak> There are no orders yet for this store, try again for a different store.  </speak>`;
                 assistant.ask(speech);
             }
         })
@@ -1157,57 +1157,61 @@ exports.recommendationHandler = (assistant) => {
     if (param) {
         let letr = param.replace(/[0-9]/g, '');
         console.log(param + " :: " + letr);
-        reccomendationData.store = assistant.data.userStore;
-        reccomendationData.order = letr;
+        let data = {store: assistant.data.userStore, order: letr};
+        reccomendationData = data;
     }
     console.log(reccomendationData);
     let o = 0;
     let i = 0;
-    getOrder(userKey, reccomendationData.store).then(alreadyAnOrder => {
-        if (alreadyAnOrder.length < 1) {
-            getSingleStore(reccomendationData.store).then(store => {
-                if (store) {
-                    if (reccomendationData.order && reccomendationData.order != "null") {
-                        let items = reccomendationData.order.toString().split(",");
-                        items.forEach(item => {
-                            if (item != " ") {
-                                getProduct(reccomendationData.store.toString(), item).then(snack => {
-                                    if (snack) {
-                                        FS_Orders.doc(store).collection('orders').doc(userKey).collection('snacks').doc(item.toString()).set({
-                                            amount: 1,
-                                            name: snack.data().name,
-                                            price: snack.data().price,
-                                            isSauce: snack.data().isSauce,
-                                            hasSauce: snack.data().hasSauce
-                                        });
-                                        o++;
-                                    }
-                                    FS_Orders.doc(store).collection('orders').doc(userKey).set({
-                                        locked: true
-                                    });
-                                    i++;
-                                    if (i => items.length) {
-                                        if (param) {
-                                            assistant.ask("You have successfully copied an order. The following items were added to your order: " + items.toString());
-                                        } else {
-                                            assistant.ask("Your order consisting of a " + items.toString() + " has been added");
+    if (reccomendationData) {
+        getOrder(userKey, reccomendationData.store).then(alreadyAnOrder => {
+            if (alreadyAnOrder.length < 1) {
+                getSingleStore(reccomendationData.store).then(store => {
+                    if (store) {
+                        if (reccomendationData.order && reccomendationData.order != "null") {
+                            let items = reccomendationData.order.toString().split(",");
+                            items.forEach(item => {
+                                if (item != " ") {
+                                    getProduct(reccomendationData.store.toString(), item).then(snack => {
+                                        if (snack) {
+                                            FS_Orders.doc(store).collection('orders').doc(userKey).collection('snacks').doc(item.toString()).set({
+                                                amount: 1,
+                                                name: snack.data().name,
+                                                price: snack.data().price,
+                                                isSauce: snack.data().isSauce,
+                                                hasSauce: snack.data().hasSauce
+                                            });
+                                            o++;
                                         }
+                                        FS_Orders.doc(store).collection('orders').doc(userKey).set({
+                                            locked: true
+                                        });
+                                        i++;
+                                        if (i => items.length) {
+                                            if (param) {
+                                                assistant.ask("You have successfully copied an order. The following items were added to your order: " + items.toString());
+                                            } else {
+                                                assistant.ask("Your order consisting of a " + items.toString() + " has been added");
+                                            }
 
-                                    }
-                                })
-                            }
-                        });
+                                        }
+                                    })
+                                }
+                            });
+                        } else {
+                            //partial reccomendation
+                        }
                     } else {
-                        //partial reccomendation
+                        assistant.ask("I can't give you any recommendations at this time. Anything else?")
                     }
-                } else {
-                    assistant.ask("I can't give you any recommendations at this time. Anything else?")
-                }
-            })
-        } else {
-            assistant.ask("You already have an order here so you can't do this. Anything else?")
-        }
-    })
+                })
+            } else {
+                assistant.ask("You already have an order here so you can't do this. Anything else?")
+            }
+        })
+    } else {
+        assistant.ask("I can't give you any recommendations at this time. Anything else?")
+    }
 }
 
 /* 
@@ -1254,7 +1258,7 @@ function getUserOrder(assistant, user) {
             FS_Users.doc(userKey.toString()).collection('habits').doc('orders').get()
                 .then(doc => {
                     if (doc.exists) {
-                        if (doc.data().order && storeID.indexOf(doc.data().store) != -1) {
+                        if (doc.data().order && doc.data().order != "null" && storeID.indexOf(doc.data().store) != -1) {
                             moreMessage = "do you want to order a " + doc.data().order + " from " + doc.data().storeName + " again?";
                             storeNameToday = "I'll have the usual";
                         }
@@ -1285,6 +1289,8 @@ function getUserOrder(assistant, user) {
                                             assistant.setContext("recommendation", 1);
                                             if (doc.exists) {
                                                 assistant.data = { username: user.data().display_name, userkey: userKey, doc: doc.data(), saveOrder: stores[i].id, userStore: stores[i].data().store };
+                                            } else {
+                                                assistant.data = { username: user.data().display_name, userkey: userKey, saveOrder: stores[i].id, userStore: stores[i].data().store };
                                             }
                                             speech = `<speak> Welcome ${user.data().display_name}!` + message + moreMessage + ` </speak>`;
                                             assistant.ask(assistant.buildRichResponse()

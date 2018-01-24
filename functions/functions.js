@@ -18,30 +18,6 @@ var moment = require('moment');
 moment().format();
 
 /*
-Allows the user to switch from a speaker device to a phone at any point in the conversation.
-Most data from the conversation will be maintained so the user can continue from where they switched
-*/
-exports.switchScreen = (assistant) => {
-    if (assistant.hasSurfaceCapability(assistant.SurfaceCapabilities.SCREEN_OUTPUT)) {
-        if (!assistant.isNewSurface()) {
-            assistant.tell("I found no screen.");
-        } else {
-            assistant.ask("Hey, Bite here. So we switched to a phone, now what do you want to do?");
-        }
-    } else if (assistant.hasAvailableSurfaceCapabilities(assistant.SurfaceCapabilities.SCREEN_OUTPUT)) {
-        try {
-            let res = assistant.askForNewSurface("Bite Service on a screen", "Continue talking to Bite service", [assistant.SurfaceCapabilities.SCREEN_OUTPUT]);
-            console.log(res);
-        } catch (e) {
-            console.error("ERROR askForNewSurface()");
-            console.log(e);
-        }
-    } else {
-        assistant.tell("Sorry I found no screen");
-    }
-}
-
-/*
 Checks the database to see if the user already has an account, this is done by comparing the access tokens
 Performs a https request to get the current user's information if the access token did not match any in the database.
 Updates the access token in the database
@@ -878,84 +854,100 @@ exports.listTotalOrder = (assistant) => {
         param = "";
     }
 
-    //for each user that has an order in this store
-    FS_Orders.doc(savedOrder.toString()).collection('orders').get()
-        .then(snapshot => {//foreach user in the order
-            if (snapshot.size > 0) {
-                snapshot.forEach(doc => {
-                    //get all snacks of the user and save them
-                    getOrder(doc.id, storeContext).then(snacks => {
-                        FS_Users.doc(doc.id.toString()).get().then(user => {
+    if (assistant.hasSurfaceCapability(assistant.SurfaceCapabilities.SCREEN_OUTPUT)) {
+        //for each user that has an order in this store
+        FS_Orders.doc(savedOrder.toString()).collection('orders').get()
+            .then(snapshot => {//foreach user in the order
+                if (snapshot.size > 0) {
+                    snapshot.forEach(doc => {
+                        //get all snacks of the user and save them
+                        getOrder(doc.id, storeContext).then(snacks => {
+                            FS_Users.doc(doc.id.toString()).get().then(user => {
 
-                            let nameArray = [];
-                            let amountArray = [];
-                            let orderString = "";
-                            let orderprice = 0;
-                            let amountOfSauces = [];
-                            let hasSauce = [];
+                                let nameArray = [];
+                                let amountArray = [];
+                                let orderString = "";
+                                let orderprice = 0;
+                                let amountOfSauces = [];
+                                let hasSauce = [];
 
-                            snacks.forEach(doc => {//foreach snack in the user order
+                                snacks.forEach(doc => {//foreach snack in the user order
 
-                                nameArray.push(doc.data().name);
-                                amountArray.push(doc.data().amount);
+                                    nameArray.push(doc.data().name);
+                                    amountArray.push(doc.data().amount);
 
-                                if (doc.data().isSauce) {
-                                    amountOfSauces += doc.data().amount;
+                                    if (doc.data().isSauce) {
+                                        amountOfSauces += doc.data().amount;
+                                    }
+                                    if (doc.data().hasSauce) {
+                                        hasSauce += doc.data().amount;
+                                    }
+                                    orderprice += doc.data().price;
+                                })
+                                for (let i = 0; i < amountArray.length; i++) {
+                                    if (param == "") {
+                                        orderString += nameArray[i] + ",";
+                                    } else {
+                                        orderString += amountArray[i] + " " + nameArray[i] + ", ";
+                                    }
                                 }
-                                if (doc.data().hasSauce) {
-                                    hasSauce += doc.data().amount;
+
+                                let discountNumber = amountOfSauces - hasSauce;
+                                let amountOfDiscounts = 0;
+                                //more sauces than discounts
+                                if (discountNumber > 0) {
+                                    amountOfDiscounts = amountOfSauces - discountNumber;
+                                } else if (discountNumber == 0) {
+                                    amountOfDiscounts = hasSauce;
+                                } else {
+                                    amountOfDiscounts = hasSauce + discountNumber;
                                 }
-                                orderprice += doc.data().price;
+                                if (amountOfDiscounts > 0) {
+                                    orderprice = orderprice - (amountOfDiscounts * 50);
+                                }
+
+                                list.addItems(assistant.buildOptionItem(param + orderString + count, [])
+                                    .setTitle(user.data().display_name + " €" + (orderprice / 100))
+                                    .setDescription(orderString)
+                                )
+                                count++;
+                                if (count == snapshot.size) {
+                                    if (count > 1) {
+                                        if (!assistant.isNewSurface()) {
+                                            assistant.askWithList(`These are the users that ordered from ${storeText}. `, list);
+                                        } else {
+                                            assistant.askWithList(`Welcome back, here's the list of users that ordered from ${storeText}. `, list);
+                                        }
+                                    } else if (count == 1) {
+                                        list.addItems(assistant.buildOptionItem("placeholder", [`placeholder`])
+                                            .setTitle("placeholder")
+                                            .setDescription(`Please don't click me QwQ`)
+                                        )
+                                        assistant.askWithList(`These are the users that ordered from ${storeText} `, list);
+                                    } else {
+                                        speech = `<speak> There are no orders yet for this store, try again for a different store. </speak>`;
+                                        assistant.ask(speech);
+                                    }
+                                }
                             })
-                            for (let i = 0; i < amountArray.length; i++) {
-                                if (param == "") {
-                                    orderString += nameArray[i] + ",";
-                                } else {
-                                    orderString += amountArray[i] + " " + nameArray[i] + ", ";
-                                }
-                            }
-
-                            let discountNumber = amountOfSauces - hasSauce;
-                            let amountOfDiscounts = 0;
-                            //more sauces than discounts
-                            if (discountNumber > 0) {
-                                amountOfDiscounts = amountOfSauces - discountNumber;
-                            } else if (discountNumber == 0) {
-                                amountOfDiscounts = hasSauce;
-                            } else {
-                                amountOfDiscounts = hasSauce + discountNumber;
-                            }
-                            if (amountOfDiscounts > 0) {
-                                orderprice = orderprice - (amountOfDiscounts * 50);
-                            }
-
-                            list.addItems(assistant.buildOptionItem(param + orderString + count, [])
-                                .setTitle(user.data().display_name + " €" + (orderprice / 100))
-                                .setDescription(orderString)
-                            )
-                            count++;
-                            if (count == snapshot.size) {
-                                if (count > 1) {
-                                    assistant.askWithList(`These are the users that ordered from ${storeText}. `, list);
-                                } else if (count == 1) {
-                                    list.addItems(assistant.buildOptionItem("placeholder", [`placeholder`])
-                                        .setTitle("placeholder")
-                                        .setDescription(`Please don't click me QwQ`)
-                                    )
-                                    assistant.askWithList(`These are the users that ordered from ${storeText} `, list);
-                                } else {
-                                    speech = `<speak> Something went wrong, try again for a different store.  </speak>`;
-                                    assistant.ask(speech);
-                                }
-                            }
                         })
                     })
-                })
-            } else {
-                speech = `<speak> There are no orders yet for this store, try again for a different store.  </speak>`;
-                assistant.ask(speech);
-            }
-        })
+                } else {
+                    speech = `<speak> There are no orders yet for this store, try again for a different store.  </speak>`;
+                    assistant.ask(speech);
+                }
+            })
+    } else if (assistant.hasAvailableSurfaceCapabilities(assistant.SurfaceCapabilities.SCREEN_OUTPUT)) {
+        try {
+            let res = assistant.askForNewSurface("For the best experience you should view this list on a phone.", "Continue talking to Bite service", [assistant.SurfaceCapabilities.SCREEN_OUTPUT]);
+            console.log(res);
+        } catch (e) {
+            console.error("ERROR askForNewSurface()");
+            console.log(e);
+        }
+    } else {
+        assistant.ask("You can only view this list on a phone, anything else you want to do?");
+    }
 }
 
 /*
@@ -1157,7 +1149,7 @@ exports.recommendationHandler = (assistant) => {
     if (param) {
         let letr = param.replace(/[0-9]/g, '');
         console.log(param + " :: " + letr);
-        let data = {store: assistant.data.userStore, order: letr};
+        let data = { store: assistant.data.userStore, order: letr };
         reccomendationData = data;
     }
     console.log(reccomendationData);
@@ -1171,7 +1163,7 @@ exports.recommendationHandler = (assistant) => {
                         if (reccomendationData.order && reccomendationData.order != "null") {
                             let items = reccomendationData.order.toString().split(",");
                             items.forEach(item => {
-                                if (item != " ") {
+                                if (item != " " && item != "placeholder") {
                                     getProduct(reccomendationData.store.toString(), item).then(snack => {
                                         if (snack) {
                                             FS_Orders.doc(store).collection('orders').doc(userKey).collection('snacks').doc(item.toString()).set({

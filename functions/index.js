@@ -36,7 +36,7 @@ exports.Bite = functions.https.onRequest((request, response) => {
   actionMap.set('input.finish', finishOrder);
   actionMap.set('input.user.order', getUserOrder);
   actionMap.set('input.user.orderedit', getUserOrder);
-  actionMap.set('new_surface_intent', switchScreen);
+  actionMap.set('new_surface_intent', listTotalOrder);
   actionMap.set('actions_intent_OPTION', createBite);
   actionMap.set('archive', getArchivedOrders);
   actionMap.set('returning', recommendationHandler);
@@ -99,10 +99,6 @@ exports.Bite = functions.https.onRequest((request, response) => {
 
   function learnMode(assistant) {
     biteFunctions.learnMode(assistant);
-  }
-
-  function switchScreen(assistant) {
-    biteFunctions.switchScreen(assistant);
   }
 
   function option(assistant) {
